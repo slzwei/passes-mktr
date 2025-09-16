@@ -1,0 +1,12 @@
+---
+description: Production-ready code only
+globs:
+alwaysApply: true
+---
+
+- Never use placeholder text, TODO comments, or incomplete implementations 
+- All code must be production-ready and fully functional
+- Implement complete error handling and validation 
+- Include comprehensive logging and debugging 
+- All UI components must be fully styled and responsive 
+- No "coming soon" or "to be implemented" features

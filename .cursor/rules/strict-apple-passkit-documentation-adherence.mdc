@@ -1,0 +1,19 @@
+---
+description: Strict Apple PassKit documentation adherence
+globs:
+alwaysApply: true
+---
+
+# Apple PassKit Documentation Rule 
+
+- ONLY reference official Apple PassKit documentation 
+
+- Never use third-party PassKit providers or libraries 
+
+- All pass generation must follow Apple's official specifications 
+
+- Reference Apple's PassKit documentation for all wallet pass features 
+
+- Implement native pass signing and certificate handling 
+
+- Use only Apple-approved pass types and fields

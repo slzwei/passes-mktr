@@ -1,0 +1,13 @@
+---
+description: Apple Wallet Pass Architecture
+globs:
+alwaysApply: true
+---
+# Apple Wallet Pass Architecture 
+- Implement complete pass.json generation 
+- Handle only there wallet types: generic, storeCard 
+- Support for all pass fields: headerFields, primaryFields, secondaryFields, auxiliaryFields, backFields 
+- Implement pass signing with PKCS#7 detached signature 
+- Generate proper manifest.json with SHA-1 hashes 
+- Handle pass updates and push notifications 
+- Implement proper pass bundle structure

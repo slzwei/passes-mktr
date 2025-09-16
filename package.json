@@ -1,0 +1,62 @@
+{
+  "name": "passes-mktr",
+  "version": "1.0.0",
+  "description": "Apple Wallet PassKit platform for MKTR",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed": "node scripts/seed.js",
+    "pass:generate": "node scripts/create-proper-pass.js",
+    "pass:test": "node scripts/test-pass-only.js",
+    "pass:test-cert": "node scripts/test-cert-robust.js",
+    "pass:test-images": "node scripts/test-image-processing.js",
+    "apns:test": "node scripts/test-apns.js"
+  },
+  "keywords": [
+    "apple",
+    "wallet",
+    "passkit",
+    "loyalty",
+    "passes"
+  ],
+  "author": "MKTR",
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "apn": "^2.2.0",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.4",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "joi": "^17.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "node-forge": "^1.3.1",
+    "pg": "^8.11.3",
+    "qrcode": "^1.5.4",
+    "redis": "^4.6.10",
+    "sharp": "^0.32.6",
+    "socket.io": "^4.8.1",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "prettier": "^3.1.0",
+    "supertest": "^6.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

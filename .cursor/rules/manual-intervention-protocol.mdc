@@ -1,0 +1,14 @@
+---
+description: Manual Intervention Rule 
+globs:
+alwaysApply: true
+---
+# Manual Intervention Rule 
+
+Only prompt for manual intervention when: 
+- Apple Developer certificates need to be generated/configured 
+- Specific business logic decisions require user input 
+- External API keys or credentials need to be provided 
+- Design preferences that cannot be inferred from context 
+
+For everything else, make intelligent decisions and implement fully.

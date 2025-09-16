@@ -1,0 +1,14 @@
+---
+description: WYSIWYG editor implementation standards
+globs:
+alwaysApply: true
+---
+
+# WYSIWYG Editor Standards 
+- Real-time preview of all changes 
+- Drag-and-drop functionality for all elements 
+- Undo/redo capability 
+- Live validation of Apple PassKit requirements 
+- Visual feedback for all user interactions 
+- Responsive design across all screen sizes 
+- Accessibility compliance (WCAG 2.1)

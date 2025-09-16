@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pass Test - QR Code Verification</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .pass-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .download-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .download-btn {
+            display: inline-block;
+            background: #007AFF;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 10px;
+        }
+        .download-btn:hover {
+            background: #0056CC;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .qr-info {
+            background: #fff3e0;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .pass-list {
+            list-style: none;
+            padding: 0;
+        }
+        .pass-list li {
+            background: #f8f9fa;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #007AFF;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Apple Wallet Pass Test</h1>
+        
+        <div class="pass-info">
+            <h2>Latest Generated Pass</h2>
+            <p><strong>Pass ID:</strong> 87577d49-36de-40c7-949c-286fdf85b3fe</p>
+            <p><strong>Serial Number:</strong> d4769395-7f91-458a-8e53-2a53aa0c9795</p>
+            <p><strong>Campaign:</strong> abba java CAFÉ</p>
+            <p><strong>Customer:</strong> John Doe</p>
+            <p><strong>Progress:</strong> 4 out of 10 stamps</p>
+        </div>
+
+        <div class="qr-info">
+            <h3>QR Code Configuration</h3>
+            <p><strong>Format:</strong> PKBarcodeFormatQR</p>
+            <p><strong>Message:</strong> PASS_ID:b3a3218a-a27c-472a-a616-16c5eeb8c585:CAMPAIGN_ID:550e8400-e29b-41d4-a716-446655440001</p>
+            <p><strong>Alt Text:</strong> Loyalty Card QR Code</p>
+            <p><strong>Encoding:</strong> iso-8859-1</p>
+        </div>
+
+        <div class="download-section">
+            <h3>Download Pass</h3>
+            <a href="storage/passes/87577d49-36de-40c7-949c-286fdf85b3fe.pkpass" class="download-btn" download>
+                Download Latest Pass (.pkpass)
+            </a>
+        </div>
+
+        <div class="instructions">
+            <h3>How to See the QR Code</h3>
+            <ol>
+                <li><strong>Download the .pkpass file</strong> using the button above</li>
+                <li><strong>Transfer to iOS device</strong> (via AirDrop, email, or cloud storage)</li>
+                <li><strong>Tap the .pkpass file</strong> on your iOS device</li>
+                <li><strong>Add to Apple Wallet</strong> when prompted</li>
+                <li><strong>Open Apple Wallet app</strong> and find your pass</li>
+                <li><strong>Tap the pass</strong> to expand it - the QR code will be at the bottom</li>
+            </ol>
+        </div>
+
+        <div class="pass-info">
+            <h3>Available Passes</h3>
+            <ul class="pass-list">
+                <li>
+                    <strong>Latest (with QR):</strong> 87577d49-36de-40c7-949c-286fdf85b3fe.pkpass
+                    <br><small>Generated: Just now - includes QR code with alt text</small>
+                </li>
+                <li>
+                    <strong>Previous:</strong> 57f745e5-fbeb-4bdb-b2d4-15a1e485f339.pkpass
+                    <br><small>Generated: Earlier - includes QR code</small>
+                </li>
+                <li>
+                    <strong>Reference:</strong> 80f81f9d-d484-441f-be17-af5c23c5ec2e.pkpass
+                    <br><small>Your original reference pass</small>
+                </li>
+            </ul>
+        </div>
+
+        <div class="instructions">
+            <h3>Troubleshooting</h3>
+            <ul>
+                <li><strong>QR code only appears in Apple Wallet</strong> - not in the extracted files</li>
+                <li><strong>Make sure you're on iOS</strong> - Android won't show Apple Wallet passes</li>
+                <li><strong>Check pass is properly signed</strong> - the signature is valid</li>
+                <li><strong>Try a different iOS device</strong> if the current one doesn't work</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

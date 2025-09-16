@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "passTypeIdentifier": "pass.com.mktr.wallet.new",
+  "serialNumber": "d4769395-7f91-458a-8e53-2a53aa0c9795",
+  "teamIdentifier": "35L9ZSS9F9",
+  "organizationName": "MKTR Platform",
+  "description": "abba java CAFÉ Loyalty Card",
+  "logoText": "abba java CAFÉ",
+  "foregroundColor": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(139, 69, 19)",
+  "labelColor": "rgb(255, 255, 255)",
+  "headerFields": [
+    {
+      "key": "campaign",
+      "label": "Campaign",
+      "value": "abba java CAFÉ"
+    }
+  ],
+  "storeCard": {
+    "primaryFields": [],
+    "secondaryFields": [
+      {
+        "key": "customerInfo",
+        "label": "Card Holder",
+        "value": "John Doe"
+      },
+      {
+        "key": "redemptionCounter",
+        "label": "Redeemed",
+        "value": "4 out of 10"
+      }
+    ],
+    "auxiliaryFields": [],
+    "backFields": [
+      {
+        "key": "terms",
+        "label": "Terms & Conditions",
+        "value": "Valid at participating locations. Not transferable. Expires 1 year from issue date."
+      },
+      {
+        "key": "contact",
+        "label": "Contact",
+        "value": "test@mktr.sg"
+      },
+      {
+        "key": "instructions",
+        "label": "How to Earn Stamps",
+        "value": "Show this pass to staff when making a purchase. Each purchase earns one stamp."
+      }
+    ],
+    "barcode": {
+      "message": "PASS_ID:b3a3218a-a27c-472a-a616-16c5eeb8c585:CAMPAIGN_ID:550e8400-e29b-41d4-a716-446655440001",
+      "format": "PKBarcodeFormatQR",
+      "messageEncoding": "iso-8859-1",
+      "altText": "Loyalty Card QR Code"
+    }
+  }
+}
