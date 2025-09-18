@@ -397,7 +397,22 @@ class PassSigner {
                 await fs.promises.copyFile(processedImages.stripBackground2x, strip2xDest);
                 // Generate 3x version from 2x
                 await sharp(processedImages.stripBackground2x).resize(STRIP_W_3X, STRIP_H_3X).png().toFile(strip3xDest);
-                logger.info('Custom strip background images copied successfully');
+              } else if (passData.stripBackgroundImage) {
+                // Use default strip background image
+                const defaultStripPath = path.join(process.cwd(), 'storage', 'images', 'processed', 'default-strip-background.png');
+                const defaultStrip2xPath = path.join(process.cwd(), 'storage', 'images', 'processed', 'default-strip-background@2x.png');
+                const defaultStrip3xPath = path.join(process.cwd(), 'storage', 'images', 'processed', 'default-strip-background@3x.png');
+                
+                if (await fs.promises.access(defaultStripPath).then(() => true).catch(() => false)) {
+                  logger.info('Using default strip background image');
+                  await fs.promises.copyFile(defaultStripPath, stripDest);
+                  await fs.promises.copyFile(defaultStrip2xPath, strip2xDest);
+                  await fs.promises.copyFile(defaultStrip3xPath, strip3xDest);
+                  logger.info('Default strip background images copied successfully');
+                } else {
+                  logger.warn('Default strip background image not found, falling back to color');
+                  // Fall through to color generation
+                }
               } else {
                 // Generate a simple strip with just the background color (Apple store card spec)
                 const stripWidth = STRIP_W_1X;
@@ -586,15 +601,37 @@ class PassSigner {
           }
         }
 
-        // Build a base strip with background color
-        const baseStripBuffer = await sharp({
-          create: {
-            width: STRIP_W_1X,
-            height: STRIP_H_1X,
-            channels: 4,
-            background: stripBackgroundColor
+        // Build a base strip with background color or image
+        let baseStripBuffer;
+        if (passData.stripBackgroundImage) {
+          // Use default strip background image
+          const defaultStripPath = path.join(process.cwd(), 'storage', 'images', 'processed', 'default-strip-background.png');
+          try {
+            await fs.promises.access(defaultStripPath);
+            baseStripBuffer = await fs.promises.readFile(defaultStripPath);
+            logger.info('Using default strip background image for base strip');
+          } catch {
+            // Fall back to color
+            baseStripBuffer = await sharp({
+              create: {
+                width: STRIP_W_1X,
+                height: STRIP_H_1X,
+                channels: 4,
+                background: stripBackgroundColor
+              }
+            }).png().toBuffer();
+            logger.info('Default strip background image not found, using color');
           }
-        }).png().toBuffer();
+        } else {
+          baseStripBuffer = await sharp({
+            create: {
+              width: STRIP_W_1X,
+              height: STRIP_H_1X,
+              channels: 4,
+              background: stripBackgroundColor
+            }
+          }).png().toBuffer();
+        }
         const baseStripPath = path.join(process.cwd(), 'temp', 'base_strip.png');
         await fs.promises.mkdir(path.dirname(baseStripPath), { recursive: true });
         await fs.promises.writeFile(baseStripPath, baseStripBuffer);

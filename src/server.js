@@ -117,6 +117,9 @@ app.use('/api', previewMatchingPassRoutes);
 // Static files for pass assets
 app.use('/assets', express.static('storage/assets'));
 
+// Serve images from storage directory
+app.use('/storage', express.static('storage'));
+
 // Serve favicon and other static files
 app.use(express.static('public'));
 

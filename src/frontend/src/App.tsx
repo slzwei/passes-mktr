@@ -72,7 +72,7 @@ function App() {
     qrAltText: 'Loyalty Card QR Code',
     expirationDate: defaultExp,
     hasExpiryDate: false,
-    stripBackgroundImage: null,
+    stripBackgroundImage: '/storage/images/processed/default-strip-background.png',
     stripBackgroundOpacity: 0.8,
     // Stamp Icons
     stampIconUnredeemed: null,
