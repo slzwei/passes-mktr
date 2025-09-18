@@ -56,8 +56,9 @@ const passConfigSchema = {
   images: {
     logo: { 
       required: true, 
-      dimensions: [29, 29],
-      description: 'Logo image (29x29px)'
+      dimensions: [160, 50], // Apple's maximum dimensions
+      description: 'Logo image (max 160x50px, auto-processed for aspect ratio)',
+      aspectRatioHandling: 'smart' // Square logos centered, wide logos scaled to fit
     },
     icon: { 
       required: true, 
@@ -84,16 +85,29 @@ const passConfigSchema = {
 const fieldTemplates = {
   // Header field templates
   header: {
-    campaign: {
-      key: 'campaign',
-      label: 'Campaign',
-      value: '{{campaignName}}',
-      textAlignment: 'PKTextAlignmentLeft'
-    },
     status: {
       key: 'status',
       label: 'Status',
       value: 'Active',
+      textAlignment: 'PKTextAlignmentRight'
+    },
+    redemptionCounter: {
+      key: 'redemptionCounter',
+      label: '',
+      value: '{{stampsEarned}} / {{stampsRequired}}',
+      textAlignment: 'PKTextAlignmentRight'
+    }
+    ,
+    expiryHeader: {
+      key: 'expiry',
+      label: 'EXP',
+      value: '{{expiryShort}}',
+      textAlignment: 'PKTextAlignmentRight'
+    },
+    redemptionCard: {
+      key: 'redemptionCard',
+      label: '',
+      value: 'Redemption Card',
       textAlignment: 'PKTextAlignmentRight'
     }
   },

@@ -6,6 +6,7 @@ const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const http = require('http');
+const path = require('path');
 require('dotenv').config();
 
 const logger = require('./utils/logger');
@@ -20,6 +21,14 @@ const passRoutes = require('./routes/passes');
 const partnerRoutes = require('./routes/partners');
 const redemptionRoutes = require('./routes/redemptions');
 const editorRoutes = require('./routes/editor');
+const barcodeRoutes = require('./routes/barcodes');
+const validationRoutes = require('./routes/validation');
+const exportRoutes = require('./routes/export');
+const templateRoutes = require('./routes/templates');
+const collaborationRoutes = require('./routes/collaboration');
+const analyticsRoutes = require('./routes/analytics');
+const stampUpdateRoutes = require('./routes/stampUpdates');
+const previewMatchingPassRoutes = require('./routes/previewMatchingPass');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,16 +40,31 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
+      scriptSrc: ["'self'", "'unsafe-eval'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'", "ws:", "wss:", "https:"],
+      workerSrc: ["'self'", "blob:"],
+      childSrc: ["'self'", "blob:"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
     },
   },
 }));
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: process.env.CORS_CREDENTIALS === 'true',
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    process.env.CORS_ORIGIN
+  ].filter(Boolean),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
 // Rate limiting
@@ -81,9 +105,23 @@ app.use('/api/passes', passRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/redemptions', redemptionRoutes);
 app.use('/api/editor', editorRoutes);
+app.use('/api/barcodes', barcodeRoutes);
+app.use('/api/validation', validationRoutes);
+app.use('/api/export', exportRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/collaboration', collaborationRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/stamp-updates', stampUpdateRoutes);
+app.use('/api', previewMatchingPassRoutes);
 
 // Static files for pass assets
 app.use('/assets', express.static('storage/assets'));
+
+// Serve favicon and other static files
+app.use(express.static('public'));
+
+// Serve frontend build files
+app.use(express.static('src/frontend/build'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -103,27 +141,34 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Route not found',
-    path: req.originalUrl,
-    method: req.method
-  });
+// Catch all handler: send back React's index.html file for any non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../src/frontend/build/index.html'));
 });
 
 // Start server
 async function startServer() {
   try {
-    // Connect to database
-    await connectDatabase();
-    logger.info('Database connected successfully');
-
-    // Connect to Redis (optional)
-    if (process.env.REDIS_URL) {
-      await connectRedis();
-      logger.info('Redis connected successfully');
+    // Connect to database (optional for development)
+    if (process.env.DATABASE_URL && process.env.DATABASE_URL !== 'postgresql://username:password@localhost:5432/passes_mktr') {
+      await connectDatabase();
+      logger.info('Database connected successfully');
+    } else {
+      logger.warn('Database connection skipped - using mock data for development');
     }
+
+    // Connect to Redis (optional) - DISABLED FOR DEVELOPMENT
+    // if (process.env.REDIS_URL && process.env.REDIS_URL.trim() !== '') {
+    //   try {
+    //     await connectRedis();
+    //     logger.info('Redis connected successfully');
+    //   } catch (error) {
+    //     logger.warn('Redis connection failed - continuing without Redis:', error.message);
+    //   }
+    // } else {
+    //   logger.warn('Redis connection skipped - no REDIS_URL provided');
+    // }
+    logger.warn('Redis connection disabled for development');
 
     // Create HTTP server
     const server = http.createServer(app);

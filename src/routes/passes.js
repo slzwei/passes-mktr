@@ -1,5 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
+const { v4: uuidv4 } = require('uuid');
+const fs = require('fs').promises;
 const PassSigner = require('../services/passSigner');
 const { query } = require('../config/database');
 const logger = require('../utils/logger');
@@ -16,13 +18,16 @@ const passSigner = new PassSigner();
 router.post('/generate', [
   body('campaignId').isUUID().withMessage('Valid campaign ID required'),
   body('customerEmail').isEmail().withMessage('Valid email required'),
+  body('customerName').optional().isString().withMessage('Customer name must be a string'),
   body('campaignName').notEmpty().withMessage('Campaign name required'),
   body('tenantName').notEmpty().withMessage('Tenant name required'),
   body('partnerId').optional().isUUID().withMessage('Partner ID must be a valid UUID'),
-  body('stampsRequired').optional().isInt({ min: 1, max: 100 }).withMessage('Stamps required must be 1-100'),
+  body('stampsRequired').optional().isInt({ min: 0, max: 100 }).withMessage('Stamps required must be 0-100'),
   body('stampsEarned').optional().isInt({ min: 0 }).withMessage('Stamps earned must be non-negative'),
+  body('cleanStrip').optional().isBoolean().withMessage('Clean strip must be a boolean'),
   body('colors').optional().isObject().withMessage('Colors must be an object'),
-  body('images').optional().isObject().withMessage('Images must be an object')
+  body('images').optional().isObject().withMessage('Images must be an object'),
+  body('fieldConfig').optional().isObject().withMessage('Field configuration must be an object')
 ], async (req, res) => {
   try {
     // Validate input
@@ -37,28 +42,42 @@ router.post('/generate', [
     const {
       campaignId,
       customerEmail,
+      customerName,
       campaignName,
       tenantName,
       partnerId,
       stampsRequired = 10,
       stampsEarned = 0,
+      cleanStrip = false,
       colors = {},
-      images = {}
+      images = {},
+      fieldConfig = null
     } = req.body;
 
-    // Check if campaign exists and is active
-    const campaignResult = await query(
-      'SELECT * FROM campaigns WHERE id = $1 AND is_active = true',
-      [campaignId]
-    );
+    // Check if campaign exists and is active (or use mock data)
+    let campaign;
+    try {
+      const campaignResult = await query(
+        'SELECT * FROM campaigns WHERE id = $1 AND is_active = true',
+        [campaignId]
+      );
 
-    if (campaignResult.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Campaign not found or inactive'
-      });
+      if (campaignResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Campaign not found or inactive'
+        });
+      }
+
+      campaign = campaignResult.rows[0];
+    } catch (error) {
+      // Use mock data when database is not available
+      logger.warn('Database not available, using mock campaign data');
+      campaign = {
+        id: campaignId,
+        stamps_required: stampsRequired,
+        is_active: true
+      };
     }
-
-    const campaign = campaignResult.rows[0];
 
     // Generate serial number
     const serialNumber = `PASS-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
@@ -69,13 +88,24 @@ router.post('/generate', [
       partnerId,
       serialNumber,
       customerEmail,
+      customerName,
       campaignName,
       tenantName,
       stampsRequired: campaign.stamps_required || stampsRequired,
       stampsEarned,
+      cleanStrip,
       colors,
-      images
+      images,
+      fieldConfig
     };
+
+    // Debug logging
+    console.log('Backend received pass data:', {
+      customerName: passData.customerName,
+      campaignName: passData.campaignName,
+      stampsEarned: passData.stampsEarned,
+      stampsRequired: passData.stampsRequired
+    });
 
     // Validate pass data
     passSigner.validatePassData(passData);
@@ -83,15 +113,29 @@ router.post('/generate', [
     // Generate pass
     const pkpassPath = await passSigner.generatePass(passData);
 
-    // Save pass record to database
-    const passResult = await query(
-      `INSERT INTO passes (id, campaign_id, serial_number, customer_email, stamps_earned, stamps_required, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-       RETURNING *`,
-      [uuidv4(), campaignId, serialNumber, customerEmail, stampsEarned, campaign.stamps_required || stampsRequired]
-    );
+    // Save pass record to database (or skip if database not available)
+    let pass;
+    try {
+      const passResult = await query(
+        `INSERT INTO passes (id, campaign_id, serial_number, customer_email, stamps_earned, stamps_required, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+         RETURNING *`,
+        [uuidv4(), campaignId, serialNumber, customerEmail, stampsEarned, campaign.stamps_required || stampsRequired]
+      );
 
-    const pass = passResult.rows[0];
+      pass = passResult.rows[0];
+    } catch (error) {
+      // Use mock data when database is not available
+      logger.warn('Database not available, using mock pass data');
+      pass = {
+        id: uuidv4(),
+        campaign_id: campaignId,
+        serial_number: serialNumber,
+        customer_email: customerEmail,
+        stamps_earned: stampsEarned,
+        stamps_required: campaign.stamps_required || stampsRequired
+      };
+    }
 
     logger.logPassOperation('pass_created', {
       passId: pass.id,
@@ -153,6 +197,22 @@ router.get('/:id/download', async (req, res) => {
     }
 
     // Set headers for .pkpass download
+    // Attach provenance headers for Chrome console debugging
+    try {
+      const prov = passSigner.lastProvenance || {};
+      if (prov) {
+        if (prov.logo) res.setHeader('X-Pass-Logo', prov.logo);
+        if (prov.logo2x) res.setHeader('X-Pass-Logo2x', prov.logo2x);
+        if (prov.logo3x) res.setHeader('X-Pass-Logo3x', prov.logo3x);
+        if (prov.logoSource) res.setHeader('X-Pass-Logo-Source', String(prov.logoSource));
+        if (prov.icon) res.setHeader('X-Pass-Icon', prov.icon);
+        if (prov.icon2x) res.setHeader('X-Pass-Icon2x', prov.icon2x);
+        if (prov.strip) res.setHeader('X-Pass-Strip', prov.strip);
+        if (prov.strip2x) res.setHeader('X-Pass-Strip2x', prov.strip2x);
+        if (prov.strip3x) res.setHeader('X-Pass-Strip3x', prov.strip3x);
+      }
+    } catch {}
+
     res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
     res.setHeader('Content-Disposition', `attachment; filename="${pass.serial_number}.pkpass"`);
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -284,6 +344,88 @@ router.post('/:id/register-device', [
     logger.error('Device registration failed:', error);
     res.status(500).json({
       error: 'Failed to register device'
+    });
+  }
+});
+
+// Working pass generation route using the existing generator approach
+router.post('/generate-working', async (req, res) => {
+  try {
+    const {
+      campaignId,
+      campaignName,
+      tenantName,
+      customerEmail,
+      customerName,
+      stampsEarned = 0,
+      stampsRequired = 10,
+      colors = {},
+      images = {},
+      qrAltText,
+      expirationDate,
+      hasExpiryDate = false,
+      fieldConfig = null
+    } = req.body;
+
+    // Use the working PassSigner directly (like in your generator scripts)
+    const passSigner = new PassSigner();
+
+    const passData = {
+      campaignId: campaignId || '550e8400-e29b-41d4-a716-446655440001',
+      campaignName: campaignName || '',
+      tenantName: tenantName || 'MKTR Platform',
+      customerEmail: customerEmail || 'test@mktr.sg',
+      customerName: customerName || 'John Doe',
+      stampsEarned: stampsEarned || 0,
+      stampsRequired: stampsRequired || 10,
+      expirationDate: expirationDate,
+      hasExpiryDate: hasExpiryDate,
+      colors: {
+        foreground: 'rgb(255, 255, 255)',
+        background: 'rgb(139, 69, 19)', // Coffee brown
+        label: 'rgb(255, 255, 255)',
+        ...colors // Use colors from editor
+      },
+      images: images || {}, // Use images from editor
+      qrAltText: qrAltText,
+      fieldConfig: fieldConfig
+    };
+
+    logger.info('Generating pass using working generator approach', { passData });
+
+    // Map stripImage (from live preview) to "strip" and pass via passData.images
+    const imagesPayload = (() => {
+      if (images && images.stripImage && !images.strip) {
+        const { stripImage, ...rest } = images;
+        logger.info('Mapped stripImage to strip for pass generation');
+        return { ...rest, strip: stripImage };
+      }
+      return images || {};
+    })();
+    // Ensure images are included in passData for PassSigner
+    passData.images = imagesPayload;
+
+    // Generate the pass using the provided images/colors
+    const pkpassPath = await passSigner.generatePass(passData);
+
+    // Read the generated file and send it
+    const passBuffer = await fs.readFile(pkpassPath);
+    
+    res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
+    res.setHeader('Content-Disposition', `attachment; filename="${campaignName.replace(/\s+/g, '_')}_pass.pkpass"`);
+    res.send(passBuffer);
+
+    logger.info('Pass generated successfully using working approach', {
+      campaignId: passData.campaignId,
+      serialNumber: passData.serialNumber,
+      fileSize: passBuffer.length
+    });
+
+  } catch (error) {
+    logger.error('Working pass generation failed:', error);
+    res.status(500).json({
+      error: 'Failed to generate pass',
+      message: error.message
     });
   }
 });

@@ -1,0 +1,14 @@
+{
+  "watch": [
+    "src/**/*.js",
+    "src/**/*.json"
+  ],
+  "ignore": [
+    "storage/**",
+    "temp/**",
+    "logs/**",
+    "src/frontend/**"
+  ]
+}
+
+

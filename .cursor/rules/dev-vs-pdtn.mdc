@@ -1,0 +1,21 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+Development vs Production Ports
+Development Mode (Port 3001)
+URL: http://localhost:3001/
+Purpose: Real-time development with hot reload
+Features: Instant updates when you save code changes
+Use for: Active development and testing new features
+Production Mode (Port 3000)
+URL: http://localhost:3000/designer/
+Purpose: Production-ready built version
+Features: Optimized, minified, and compiled code
+Use for: Final testing and deployment preview
+Quick Reference:
+Developing? → Use port 3001 for instant feedback
+Testing final version? → Use port 3000 after running npm run build
+Deploying? → Port 3000 serves the production build
+Note: Remember to run npm run build in the frontend directory whenever you want to update the production version with your latest changes.

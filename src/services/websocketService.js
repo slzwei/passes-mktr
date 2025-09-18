@@ -12,9 +12,17 @@ class WebSocketService {
   constructor(server) {
     this.io = new Server(server, {
       cors: {
-        origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-        methods: ['GET', 'POST']
-      }
+        origin: [
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://127.0.0.1:3000',
+          'http://127.0.0.1:3001',
+          process.env.CORS_ORIGIN
+        ].filter(Boolean),
+        methods: ['GET', 'POST'],
+        credentials: true
+      },
+      transports: ['websocket', 'polling']
     });
     
     this.previewService = new PreviewService();

@@ -31,6 +31,9 @@ class PreviewService {
         }
       }
 
+      // Clean up old preview directories before generating new one
+      await this.cleanupOldPreviews();
+
       logger.info('Generating new preview', { templateId: template.id });
 
       // Generate preview configuration
@@ -61,8 +64,8 @@ class PreviewService {
         }
       }
 
-      // Clean up preview directory
-      await fs.promises.rmdir(previewDir, { recursive: true });
+      // Note: Don't clean up preview directory immediately as frontend may need to access files
+      // Cleanup will be handled by a separate cleanup process or on next preview generation
 
       const previewData = {
         passJson,
@@ -234,6 +237,30 @@ class PreviewService {
    */
   generatePlaceholderQR() {
     return this.generateQRCode('PASS_ID:placeholder:CAMPAIGN_ID:placeholder');
+  }
+
+  /**
+   * Clean up old preview directories
+   */
+  async cleanupOldPreviews() {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const tempDir = path.join(process.cwd(), 'temp_preview');
+      
+      // Check if directory exists
+      if (fs.existsSync(tempDir)) {
+        // Remove all files in the directory
+        const files = await fs.promises.readdir(tempDir);
+        for (const file of files) {
+          const filePath = path.join(tempDir, file);
+          await fs.promises.unlink(filePath);
+        }
+        logger.info('Cleaned up old preview files');
+      }
+    } catch (error) {
+      logger.warn('Failed to cleanup old previews:', error.message);
+    }
   }
 }
 

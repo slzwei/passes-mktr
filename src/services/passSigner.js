@@ -3,10 +3,21 @@ const path = require('path');
 const crypto = require('crypto');
 const forge = require('node-forge');
 const { v4: uuidv4 } = require('uuid');
+const sharp = require('sharp');
 const logger = require('../utils/logger');
 const ImageProcessor = require('./imageProcessor');
-const StampGenerator = require('./stampGenerator');
+// const StampGenerator = require('./stampGenerator'); // Removed - using buildStampStrip instead
 const PassConfigService = require('./passConfigService');
+const DynamicStampService = require('./dynamicStampService');
+const { 
+  STRIP_W_1X, 
+  STRIP_H_1X, 
+  STRIP_W_2X, 
+  STRIP_H_2X, 
+  STRIP_W_3X, 
+  STRIP_H_3X, 
+  STRIP_DEBUG 
+} = require('../shared/stripConstants.js');
 
 class PassSigner {
   constructor() {
@@ -15,9 +26,13 @@ class PassSigner {
     this.certPath = process.env.APPLE_CERT_PATH;
     this.certPassword = process.env.APPLE_CERT_PASSWORD;
     this.imageProcessor = new ImageProcessor();
-    this.stampGenerator = new StampGenerator();
+    // this.stampGenerator = new StampGenerator(); // Removed - using buildStampStrip instead
     this.configService = new PassConfigService();
-    
+    this.dynamicStampService = new DynamicStampService();
+
+    // Holds the most recent image paths used during generation for diagnostics
+    this.lastProvenance = null;
+
     if (!this.teamId || !this.passTypeId || !this.certPath || !this.certPassword) {
       throw new Error('Missing required Apple certificate configuration');
     }
@@ -34,22 +49,24 @@ class PassSigner {
       // Create temporary directory
       await fs.promises.mkdir(tempDir, { recursive: true });
 
-      // Generate pass.json
-      const passJson = this.generatePassJson(passData);
+      // Check if stamps are needed
+      const { stampsRequired = 10 } = passData;
+      const includeStrips = stampsRequired > 0;
+
+      // Process and add images first to get logo format information
+      const processedImages = await this.addImagesToPass(tempDir, includeStrips, passData.images, passData);
+      // Expose for route to attach debug headers
+      this.lastProvenance = processedImages;
+
+      // Generate pass.json with logo format information
+      const passJson = this.generatePassJson(passData, passData.fieldConfig, processedImages);
       await fs.promises.writeFile(
         path.join(tempDir, 'pass.json'),
         JSON.stringify(passJson, null, 2)
       );
 
-      // Check if stamps are needed
-      const { stampsRequired = 10 } = passData;
-      const includeStrips = stampsRequired > 0;
-
-      // Process and add images
-      await this.addImagesToPass(tempDir, includeStrips);
-
       // Generate and add stamps
-      await this.addStampsToPass(tempDir, passData);
+      await this.addStampsToPass(tempDir, passData, processedImages);
 
       // Generate manifest.json
       const manifest = await this.generateManifest(tempDir);
@@ -87,7 +104,7 @@ class PassSigner {
   /**
    * Generate pass.json content
    */
-  generatePassJson(passData, customConfig = null) {
+  generatePassJson(passData, customConfig = null, processedImages = null) {
     const {
       campaignId,
       partnerId,
@@ -105,22 +122,42 @@ class PassSigner {
     // Get field configuration (use custom config if provided, otherwise use default loyalty card config)
     const fieldConfig = customConfig || this.configService.getLoyaltyCardConfig(passData);
     
+    // Debug logging for field configuration
+    logger.info('Field configuration:', {
+      hasCustomConfig: !!customConfig,
+      fieldConfig: fieldConfig ? {
+        header: fieldConfig.fields?.header?.length || 0,
+        secondary: fieldConfig.fields?.secondary?.length || 0,
+        auxiliary: fieldConfig.fields?.auxiliary?.length || 0
+      } : null
+    });
+    
     // Merge colors with field config colors
     const finalColors = { ...fieldConfig.colors, ...colors };
 
-    return {
+    // Determine if logo text should be hidden based on processed images
+    const shouldHideLogoText = processedImages && processedImages.hideLogoText;
+    
+    logger.info(`Logo format info - Format: ${processedImages?.logoFormat}, Hide logo text: ${shouldHideLogoText}`);
+    
+    const passJson = {
       formatVersion: 1,
       passTypeIdentifier: this.passTypeId,
       serialNumber: serialNumber || uuidv4(),
       teamIdentifier: this.teamId,
       organizationName: tenantName || 'MKTR',
-      description: `${campaignName} Loyalty Card`,
-      logoText: campaignName,
+      description: campaignName ? `${campaignName} Loyalty Card` : 'Loyalty Card',
+      // Only include logoText if it should not be hidden (wide logo format) and campaignName is not empty
+      ...(shouldHideLogoText || !campaignName ? {} : { 
+        logoText: campaignName,
+        logoTextAlignment: 'PKTextAlignmentLeft'
+      }),
       foregroundColor: finalColors.foreground,
       backgroundColor: finalColors.background,
       labelColor: finalColors.label,
-      headerFields: fieldConfig.fields.header,
+      ...(passData.hasExpiryDate && passData.expirationDate ? { expirationDate: new Date(passData.expirationDate).toISOString() } : {}),
       storeCard: {
+        headerFields: fieldConfig.fields.header,
         primaryFields: fieldConfig.fields.primary,
         secondaryFields: fieldConfig.fields.secondary,
         auxiliaryFields: fieldConfig.fields.auxiliary,
@@ -130,9 +167,19 @@ class PassSigner {
         message: `PASS_ID:${uuidv4()}:CAMPAIGN_ID:${campaignId}:PARTNER_ID:${partnerId || 'default'}`,
         format: 'PKBarcodeFormatQR',
         messageEncoding: 'iso-8859-1',
-        altText: 'Loyalty Card QR Code'
+        altText: passData.qrAltText || 'Loyalty Card QR Code'
       }
     };
+
+    // Add thumbnail if icon is available
+    if (images && images.icon) {
+      passJson.thumbnail = {
+        key: 'thumbnail',
+        value: 'icon'
+      };
+    }
+
+    return passJson;
   }
 
   /**
@@ -238,10 +285,32 @@ class PassSigner {
   /**
    * Add processed images to pass directory
    */
-  async addImagesToPass(tempDir, includeStrips = true) {
+  async addImagesToPass(tempDir, includeStrips = true, uploadedImages = null, passData = null) {
     try {
-      // Process images and get paths
-      const imagePaths = await this.imageProcessor.getProcessedImagePaths(includeStrips);
+      let imagePaths;
+      
+      // Check if we need to skip strip processing (will be handled by addStampsToPass)
+      const hasStamps = uploadedImages && uploadedImages.strip && uploadedImages.stampsEarned !== undefined;
+      const shouldSkipStrips = hasStamps && includeStrips;
+      
+      if (uploadedImages && (uploadedImages.logo || uploadedImages.icon || uploadedImages.strip || uploadedImages.stampIcon)) {
+        // Process uploaded images first, then use them
+        logger.info('Processing uploaded images for pass generation');
+        
+        if (shouldSkipStrips) {
+          logger.info('Skipping strip processing - will be handled by dynamic stamp service');
+          // Process everything except strips
+          const imagesWithoutStrips = { ...uploadedImages };
+          delete imagesWithoutStrips.strip;
+          imagePaths = await this.imageProcessor.processUploadedImages(imagesWithoutStrips, false);
+        } else {
+          imagePaths = await this.imageProcessor.processUploadedImages(uploadedImages, includeStrips);
+        }
+      } else {
+        // Use existing processed images, but skip strips if we're going to generate custom stamps
+        const skipStrips = includeStrips && passData && (passData.stampsRequired > 0);
+        imagePaths = await this.imageProcessor.getProcessedImagePaths(skipStrips ? false : includeStrips);
+      }
       
       // Copy processed images to pass directory
       await this.imageProcessor.copyImagesToPassDir(tempDir, imagePaths);
@@ -254,292 +323,336 @@ class PassSigner {
       logger.info('Skipping coffee bean texture for clean pass');
       
       logger.info('Images added to pass successfully');
+      return imagePaths;
     } catch (error) {
       logger.error('Failed to add images to pass:', error);
       // Continue without images - will use defaults
+      return null;
     }
   }
 
   /**
    * Add stamps to pass directory
    */
-  async addStampsToPass(tempDir, passData) {
+  async addStampsToPass(tempDir, passData, processedImages = null) {
     try {
-      const { stampsEarned = 0, stampsRequired = 10 } = passData;
+      const { stampsEarned = 0, stampsRequired = 10, images: uploadedImages } = passData;
       
       // Skip stamp generation if no stamps required
       if (stampsRequired === 0) {
         logger.info('No stamps required - skipping stamp generation');
         return;
       }
+
+      // Check if user wants clean strip without stamps
+      const wantsCleanStrip = (uploadedImages && uploadedImages.strip && !uploadedImages.stampsEarned) || passData.cleanStrip;
+      if (wantsCleanStrip) {
+        logger.info('User wants clean strip without stamps - using strip as-is');
+        
+        try {
+          if (uploadedImages && uploadedImages.strip) {
+            // Save uploaded strip image temporarily
+            const tempStripPath = path.join(process.cwd(), 'temp', 'uploaded_strip.png');
+            await fs.promises.mkdir(path.dirname(tempStripPath), { recursive: true });
+            
+            // Extract base64 data
+            const base64Data = uploadedImages.strip.replace(/^data:image\/[a-z]+;base64,/, '');
+            const imageBuffer = Buffer.from(base64Data, 'base64');
+            await fs.promises.writeFile(tempStripPath, imageBuffer);
+            
+            // Process the clean strip image to proper dimensions
+            const stripDest = path.join(tempDir, 'strip.png');
+            const strip2xDest = path.join(tempDir, 'strip@2x.png');
+            const strip3xDest = path.join(tempDir, 'strip@3x.png');
+            
+            // Resize to Apple Wallet store card strip dimensions (EXACT)
+            await sharp(tempStripPath)
+              .resize(STRIP_W_1X, STRIP_H_1X)
+              .png()
+              .toFile(stripDest);
+              
+            await sharp(tempStripPath)
+              .resize(STRIP_W_2X, STRIP_H_2X)
+              .png()
+              .toFile(strip2xDest);
+              
+            await sharp(tempStripPath)
+              .resize(STRIP_W_3X, STRIP_H_3X)
+              .png()
+              .toFile(strip3xDest);
+          } else {
+            // Generate clean strip with custom background image or color
+            const stripBackgroundColor = passData.colors?.stripBackground || '#F5F5F5';
+            logger.info(`Generating clean strip with background color: ${stripBackgroundColor}`);
+            
+            try {
+              const stripDest = path.join(tempDir, 'strip.png');
+              const strip2xDest = path.join(tempDir, 'strip@2x.png');
+              const strip3xDest = path.join(tempDir, 'strip@3x.png');
+              
+              // Check if custom strip background image is available
+              if (processedImages && processedImages.stripBackground) {
+                logger.info('Using custom strip background image');
+                await fs.promises.copyFile(processedImages.stripBackground, stripDest);
+                await fs.promises.copyFile(processedImages.stripBackground2x, strip2xDest);
+                // Generate 3x version from 2x
+                await sharp(processedImages.stripBackground2x).resize(STRIP_W_3X, STRIP_H_3X).png().toFile(strip3xDest);
+                logger.info('Custom strip background images copied successfully');
+              } else {
+                // Generate a simple strip with just the background color (Apple store card spec)
+                const stripWidth = STRIP_W_1X;
+                const stripHeight = STRIP_H_1X;
+                
+                // Create a simple colored strip
+                const stripBuffer = await sharp({
+                  create: {
+                    width: stripWidth,
+                    height: stripHeight,
+                    channels: 4,
+                    background: stripBackgroundColor
+                  }
+                })
+                .png()
+                .toBuffer();
+                
+                await fs.promises.writeFile(stripDest, stripBuffer);
+                await sharp(stripBuffer).resize(STRIP_W_2X, STRIP_H_2X).png().toFile(strip2xDest);
+                await sharp(stripBuffer).resize(STRIP_W_3X, STRIP_H_3X).png().toFile(strip3xDest);
+                
+                logger.info(`Clean strip generated with background color ${stripBackgroundColor}`);
+              }
+              
+            } catch (error) {
+              logger.error('Failed to generate clean strip:', error);
+              // Fall back to default strip images
+              const defaultStripPath = path.join(process.cwd(), 'storage', 'images', 'strips', 'strip.png');
+              const defaultStrip2xPath = path.join(process.cwd(), 'storage', 'images', 'strips', 'strip@2x.png');
+              
+              if (fs.existsSync(defaultStripPath)) {
+                const stripDest = path.join(tempDir, 'strip.png');
+                const strip2xDest = path.join(tempDir, 'strip@2x.png');
+                
+                await fs.promises.copyFile(defaultStripPath, stripDest);
+                if (fs.existsSync(defaultStrip2xPath)) {
+                  await fs.promises.copyFile(defaultStrip2xPath, strip2xDest);
+                } else {
+                  // Generate @2x from @1x
+                  await sharp(defaultStripPath)
+                    .resize(750, 288)
+                    .png()
+                    .toFile(strip2xDest);
+                }
+                
+                // Generate @3x
+                const strip3xDest = path.join(tempDir, 'strip@3x.png');
+                await sharp(defaultStripPath)
+                  .resize(STRIP_W_3X, STRIP_H_3X)
+                  .png()
+                  .toFile(strip3xDest);
+              }
+            }
+          }
+          
+          logger.info('Clean strip images created without stamps');
+          return;
+          
+        } catch (error) {
+          logger.error('Failed to create clean strip:', error);
+          // Fall back to regular stamp generation
+        }
+      }
       
-      // Check if we have SVG stamp strip
-      const svgStampStripPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `svg_stamp_strip_${stampsEarned}_${stampsRequired}.png`);
-      const svgStampStrip2xPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `svg_stamp_strip_${stampsEarned}_${stampsRequired}@2x.png`);
+      // Handle uploaded strip images with dynamic stamp overlay
+      if (uploadedImages && uploadedImages.strip) {
+        logger.info('User uploaded custom strip image - creating dynamic strip with stamps overlay');
+        
+        try {
+          // Save uploaded strip image temporarily
+          const tempStripPath = path.join(process.cwd(), 'temp', 'uploaded_strip.png');
+          await fs.promises.mkdir(path.dirname(tempStripPath), { recursive: true });
+          
+          // Extract base64 data
+          const base64Data = uploadedImages.strip.replace(/^data:image\/[a-z]+;base64,/, '');
+          const imageBuffer = Buffer.from(base64Data, 'base64');
+          await fs.promises.writeFile(tempStripPath, imageBuffer);
+          
+          // Resolve icon paths (prefer uploaded)
+          let iconPath = null;
+          let iconRedeemedPath = null;
+          if (processedImages && (processedImages.stampIconUnredeemed || processedImages.stampIcon)) {
+            iconPath = processedImages.stampIconUnredeemed || processedImages.stampIcon;
+            iconRedeemedPath = processedImages.stampIconRedeemed || iconPath;
+          } else {
+            const coffeeStampPath = path.join(process.cwd(), 'storage', 'images', 'icons', 'coffee.png');
+            const testCoffeePath = path.join(process.cwd(), 'storage', 'images', 'icons', 'test-coffee-icon.png');
+            try {
+              await fs.promises.access(coffeeStampPath);
+              iconPath = coffeeStampPath;
+              iconRedeemedPath = coffeeStampPath;
+            } catch {
+              try {
+                await fs.promises.access(testCoffeePath);
+                iconPath = testCoffeePath;
+                iconRedeemedPath = testCoffeePath;
+              } catch {
+                // Will use circle-based stamps
+              }
+            }
+          }
+          
+          // Handle custom stamp icon if provided
+          let customStampIconPath = null;
+          if (uploadedImages.stampIcon) {
+            const tempStampIconPath = path.join(process.cwd(), 'temp', 'uploaded_stamp_icon.png');
+            await fs.promises.mkdir(path.dirname(tempStampIconPath), { recursive: true });
+            
+            // Extract base64 data
+            const base64Data = uploadedImages.stampIcon.replace(/^data:image\/[a-z]+;base64,/, '');
+            const imageBuffer = Buffer.from(base64Data, 'base64');
+            await fs.promises.writeFile(tempStampIconPath, imageBuffer);
+            customStampIconPath = tempStampIconPath;
+          }
+          
+          // Create dynamic strip with stamps overlay (full Apple Wallet dimensions)
+          const dynamicStrips = await this.dynamicStampService.createDynamicStripWithStamps(
+            tempStripPath,
+            stampsEarned,
+            stampsRequired,
+            customStampIconPath || iconPath,
+            {
+              // Only non-layout flags should be passed; layout is unified in the service
+              opacity: 0.4,
+              iconRedeemedPath: iconRedeemedPath
+            }
+          );
+          
+          // Copy generated strips to pass directory (no scaling)
+          const stripDest = path.join(tempDir, 'strip.png');
+          const strip2xDest = path.join(tempDir, 'strip@2x.png');
+          const strip3xDest = path.join(tempDir, 'strip@3x.png');
+          
+          logger.info(`Copying dynamic strips to pass directory:`);
+          logger.info(`  From: ${dynamicStrips.strip} -> ${stripDest}`);
+          logger.info(`  From: ${dynamicStrips.strip2x} -> ${strip2xDest}`);
+          logger.info(`  From: ${dynamicStrips.strip3x} -> ${strip3xDest}`);
+          
+          await fs.promises.copyFile(dynamicStrips.strip, stripDest);
+          await fs.promises.copyFile(dynamicStrips.strip2x, strip2xDest);
+          await fs.promises.copyFile(dynamicStrips.strip3x, strip3xDest);
+          
+          // Verify files were copied
+          const stripStats = await fs.promises.stat(stripDest);
+          const strip2xStats = await fs.promises.stat(strip2xDest);
+          const strip3xStats = await fs.promises.stat(strip3xDest);
+          
+          logger.info(`Dynamic strips copied successfully:`);
+          logger.info(`  strip.png: ${stripStats.size} bytes`);
+          logger.info(`  strip@2x.png: ${strip2xStats.size} bytes`);
+          logger.info(`  strip@3x.png: ${strip3xStats.size} bytes`);
+          logger.info(`Dynamic strip with stamps overlay created: ${stampsEarned}/${stampsRequired} stamps`);
+          return;
+          
+        } catch (error) {
+          logger.error('Failed to create dynamic strip with stamps overlay:', error);
+          // Fall back to regular stamp generation
+        }
+      }
       
-      if (fs.existsSync(svgStampStripPath) && fs.existsSync(svgStampStrip2xPath)) {
-        // Use SVG stamp strip
+      // Generate strip with custom background color
+      const stripBackgroundColor = passData.colors?.stripBackground || '#F5F5F5';
+      logger.info(`Generating strip with background color: ${stripBackgroundColor}`);
+      
+      try {
+        // Resolve icon paths (prefer uploaded, include redeemed)
+        let iconPath = null;
+        let iconRedeemedPath = null;
+        if (processedImages && (processedImages.stampIconUnredeemed || processedImages.stampIcon)) {
+          iconPath = processedImages.stampIconUnredeemed || processedImages.stampIcon;
+          iconRedeemedPath = processedImages.stampIconRedeemed || iconPath;
+          logger.info(`Using uploaded stamp icons: unredeemed=${iconPath}, redeemed=${iconRedeemedPath}`);
+        } else {
+          const coffeeStampPath = path.join(process.cwd(), 'storage', 'images', 'icons', 'coffee.png');
+          const testCoffeePath = path.join(process.cwd(), 'storage', 'images', 'icons', 'test-coffee-icon.png');
+          try {
+            await fs.promises.access(coffeeStampPath);
+            iconPath = coffeeStampPath;
+            iconRedeemedPath = coffeeStampPath;
+          } catch {
+            try {
+              await fs.promises.access(testCoffeePath);
+              iconPath = testCoffeePath;
+              iconRedeemedPath = testCoffeePath;
+            } catch {}
+          }
+        }
+
+        // Build a base strip with background color
+        const baseStripBuffer = await sharp({
+          create: {
+            width: STRIP_W_1X,
+            height: STRIP_H_1X,
+            channels: 4,
+            background: stripBackgroundColor
+          }
+        }).png().toBuffer();
+        const baseStripPath = path.join(process.cwd(), 'temp', 'base_strip.png');
+        await fs.promises.mkdir(path.dirname(baseStripPath), { recursive: true });
+        await fs.promises.writeFile(baseStripPath, baseStripBuffer);
+
+        // Use dynamic service to overlay stamps with separate icons
+        const dynamicStrips2 = await this.dynamicStampService.createDynamicStripWithStamps(
+          baseStripPath,
+          stampsEarned,
+          stampsRequired,
+          iconPath,
+          { iconRedeemedPath }
+        );
+
+        // Save generated strips to pass directory
         const stripDest = path.join(tempDir, 'strip.png');
         const strip2xDest = path.join(tempDir, 'strip@2x.png');
+        const strip3xDest = path.join(tempDir, 'strip@3x.png');
+
+        await fs.promises.copyFile(dynamicStrips2.strip, stripDest);
+        await fs.promises.copyFile(dynamicStrips2.strip2x, strip2xDest);
+        await fs.promises.copyFile(dynamicStrips2.strip3x, strip3xDest);
+
+        // Debug logging and duplicate saves
+        if (STRIP_DEBUG) {
+          const x1 = await fs.promises.readFile(stripDest);
+          const x2 = await fs.promises.readFile(strip2xDest);
+          const x3 = await fs.promises.readFile(strip3xDest);
+          const x1Meta = await sharp(x1).metadata();
+          const x2Meta = await sharp(x2).metadata();
+          const x3Meta = await sharp(x3).metadata();
+          const sha1_1x = crypto.createHash('sha1').update(x1).digest('hex');
+          const sha1_2x = crypto.createHash('sha1').update(x2).digest('hex');
+          const sha1_3x = crypto.createHash('sha1').update(x3).digest('hex');
+
+          console.log(`STRIP DEBUG (passSigner-dynamicStamp): finalWidth=${x1Meta.width}, finalHeight=${x1Meta.height}`);
+          console.log(`STRIP DEBUG (passSigner-dynamicStamp): extract/trim rectangles used: NONE`);
+          console.log(`STRIP OK | 1x:${STRIP_W_1X}x${STRIP_H_1X} sha1=${sha1_1x} | 2x:${STRIP_W_2X}x${STRIP_H_2X} sha1=${sha1_2x} | 3x:${STRIP_W_3X}x${STRIP_H_3X} sha1=${sha1_3x} | extract=NONE`);
+
+          // Save debug duplicates next to the pass
+          await fs.promises.writeFile(path.join(tempDir, 'strip.debug.1x.png'), x1);
+          await fs.promises.writeFile(path.join(tempDir, 'strip.debug.2x.png'), x2);
+          await fs.promises.writeFile(path.join(tempDir, 'strip.debug.3x.png'), x3);
+        }
         
-        await fs.promises.copyFile(svgStampStripPath, stripDest);
-        await fs.promises.copyFile(svgStampStrip2xPath, strip2xDest);
-        
-        logger.info(`SVG stamp strip added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
+        logger.info(`Custom strip generated with background color ${stripBackgroundColor}: ${stampsEarned}/${stampsRequired} stamps (dynamic overlay)`);
         return;
+        
+      } catch (error) {
+        logger.error('Failed to generate custom strip:', error);
+        // Fall back to existing strip generation methods
       }
       
-      // Check if we have taller strip Hi icon stamps
-      const tallerStripHiStampsPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `taller_strip_hi_stamps_${stampsEarned}_${stampsRequired}.png`);
+      // All old fallback methods removed - always use new circular stamp generation
       
-      if (fs.existsSync(tallerStripHiStampsPath)) {
-        // Use taller strip Hi icon stamps
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(tallerStripHiStampsPath, stripDest);
-        await fs.promises.copyFile(tallerStripHiStampsPath, strip2xDest);
-        
-        logger.info(`Taller strip Hi icon stamps added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have large Hi icon stamps
-      const largeHiStampsPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `large_hi_stamps_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(largeHiStampsPath)) {
-        // Use large Hi icon stamps
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(largeHiStampsPath, stripDest);
-        await fs.promises.copyFile(largeHiStampsPath, strip2xDest);
-        
-        logger.info(`Large Hi icon stamps added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have Hi icon stamps
-      const hiIconStampsPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `hi_icon_stamps_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(hiIconStampsPath)) {
-        // Use Hi icon stamps
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(hiIconStampsPath, stripDest);
-        await fs.promises.copyFile(hiIconStampsPath, strip2xDest);
-        
-        logger.info(`Hi icon stamps added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have centered wider strip
-      const centeredWiderStripPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `centered_wider_strip_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(centeredWiderStripPath)) {
-        // Use centered wider strip
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(centeredWiderStripPath, stripDest);
-        await fs.promises.copyFile(centeredWiderStripPath, strip2xDest);
-        
-        logger.info(`Centered wider strip added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have full width stamps
-      const fullWidthStampsPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `full_width_stamps_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(fullWidthStampsPath)) {
-        // Use full width stamps
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(fullWidthStampsPath, stripDest);
-        await fs.promises.copyFile(fullWidthStampsPath, strip2xDest);
-        
-        logger.info(`Full width stamps added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a pizza card layout
-      const pizzaCardPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `pizza_card_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(pizzaCardPath)) {
-        // Use pizza card layout
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(pizzaCardPath, stripDest);
-        await fs.promises.copyFile(pizzaCardPath, strip2xDest);
-        
-        logger.info(`Pizza card layout added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a taller strip container
-      const tallerStripPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `taller_strip_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(tallerStripPath)) {
-        // Use taller strip container
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(tallerStripPath, stripDest);
-        await fs.promises.copyFile(tallerStripPath, strip2xDest);
-        
-        logger.info(`Taller strip container added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a taller spacer grid
-      const tallerSpacerGridPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `taller_spacer_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(tallerSpacerGridPath)) {
-        // Use taller spacer grid
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(tallerSpacerGridPath, stripDest);
-        await fs.promises.copyFile(tallerSpacerGridPath, strip2xDest);
-        
-        logger.info(`Taller spacer grid added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a stamps with spacer grid
-      const spacerGridPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `stamps_with_spacer_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(spacerGridPath)) {
-        // Use stamps with spacer grid
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(spacerGridPath, stripDest);
-        await fs.promises.copyFile(spacerGridPath, strip2xDest);
-        
-        logger.info(`Stamps with spacer grid added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have an edge-to-edge grid
-      const edgeToEdgeGridPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `edge_to_edge_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(edgeToEdgeGridPath)) {
-        // Use edge-to-edge grid
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(edgeToEdgeGridPath, stripDest);
-        await fs.promises.copyFile(edgeToEdgeGridPath, strip2xDest);
-        
-        logger.info(`Edge-to-edge grid added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a stamps-only grid
-      const stampsOnlyGridPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `stamps_only_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(stampsOnlyGridPath)) {
-        // Use stamps-only grid
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(stampsOnlyGridPath, stripDest);
-        await fs.promises.copyFile(stampsOnlyGridPath, strip2xDest);
-        
-        logger.info(`Stamps-only grid added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a minimal stamp grid
-      const minimalGridPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `minimal_stamp_grid_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(minimalGridPath)) {
-        // Use minimal stamp grid
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(minimalGridPath, stripDest);
-        await fs.promises.copyFile(minimalGridPath, strip2xDest);
-        
-        logger.info(`Minimal stamp grid added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a simple stamp grid
-      const simpleGridPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `simple_stamp_grid_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(simpleGridPath)) {
-        // Use simple stamp grid
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(simpleGridPath, stripDest);
-        await fs.promises.copyFile(simpleGridPath, strip2xDest);
-        
-        logger.info(`Simple stamp grid added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a clean stamp grid
-      const cleanGridPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `clean_stamp_grid_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(cleanGridPath)) {
-        // Use clean stamp grid
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(cleanGridPath, stripDest);
-        await fs.promises.copyFile(cleanGridPath, strip2xDest);
-        
-        logger.info(`Clean stamp grid added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Check if we have a "Hi" logo stamp grid (fallback)
-      const hiGridPath = path.join(process.cwd(), 'storage', 'images', 'stamps', `hi_stamp_grid_${stampsEarned}_${stampsRequired}.png`);
-      
-      if (fs.existsSync(hiGridPath)) {
-        // Use "Hi" logo stamp grid
-        const stripDest = path.join(tempDir, 'strip.png');
-        const strip2xDest = path.join(tempDir, 'strip@2x.png');
-        
-        await fs.promises.copyFile(hiGridPath, stripDest);
-        await fs.promises.copyFile(hiGridPath, strip2xDest);
-        
-        logger.info(`"Hi" logo stamp grid added to pass: ${stampsEarned}/${stampsRequired} redeemed`);
-        return;
-      }
-      
-      // Fallback to regular stamp generation
-      const iconPath = path.join(process.cwd(), 'storage', 'images', 'icons', 'icon.png');
-      const coffeeTexturePath = path.join(process.cwd(), 'storage', 'images', 'strips', 'coffee-bean-texture.png');
-      
-      if (!fs.existsSync(iconPath)) {
-        logger.warn('Icon not found for stamps, skipping stamp generation');
-        return;
-      }
-      
-      // Generate stamp grid with icon and coffee bean background
-      const stampGridPath = await this.stampGenerator.createStampGridWithBackground(
-        stampsEarned,
-        stampsRequired,
-        iconPath,
-        coffeeTexturePath
-      );
-      
-      // Replace the strip images with stamp grid
-      const stripDest = path.join(tempDir, 'strip.png');
-      const strip2xDest = path.join(tempDir, 'strip@2x.png');
-      
-      // Copy stamp grid as strip images (this will be visible in Apple Wallet)
-      await fs.promises.copyFile(stampGridPath, stripDest);
-      await fs.promises.copyFile(stampGridPath, strip2xDest);
-      
-      logger.info(`Stamps added to pass as strip images: ${stampsEarned}/${stampsRequired} redeemed`);
+      // If we reach here, the new circular stamp generation failed
+      // This should not happen with the fixed buildStampStrip function
+      logger.error('All stamp generation methods failed - this should not happen');
+      logger.warn('Skipping stamp generation due to unexpected error');
     } catch (error) {
       logger.error('Failed to add stamps to pass:', error);
       // Continue without stamps

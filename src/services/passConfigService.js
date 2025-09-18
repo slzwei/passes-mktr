@@ -22,7 +22,7 @@ class PassConfigService {
         label: 'rgb(255, 255, 255)'
       },
       fields: {
-        header: [fieldTemplates.header.campaign],
+        header: [],
         primary: [],
         secondary: [],
         auxiliary: [],
@@ -97,7 +97,9 @@ class PassConfigService {
       customerName,
       stampsEarned = 0,
       stampsRequired = 10,
-      customerEmail
+      customerEmail,
+      expirationDate,
+      hasExpiryDate = false
     } = passData;
 
     const data = {
@@ -106,23 +108,49 @@ class PassConfigService {
       stampsEarned,
       stampsRequired,
       customerEmail,
-      progressPercentage: Math.round((stampsEarned / stampsRequired) * 100)
+      progressPercentage: Math.round((stampsEarned / stampsRequired) * 100),
+      ...(expirationDate && hasExpiryDate ? (() => {
+        const d = new Date(expirationDate);
+        if (isNaN(d.getTime())) return {};
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yy = String(d.getFullYear()).slice(-2);
+        return { expiryShort: `${dd}/${mm}/${yy}` };
+      })() : {})
     };
 
-    return {
+    const config = {
       colors: {
         foreground: 'rgb(255, 255, 255)',
         background: 'rgb(60, 65, 76)',
         label: 'rgb(255, 255, 255)'
       },
       fields: {
-        header: this.buildFields('header', ['campaign'], data),
-        primary: this.buildFields('primary', [], data),
+        header: [
+          {
+            key: 'pointsValue',
+            label: 'POINTS',
+            value: '1836',
+            textAlignment: 'PKTextAlignmentRight'
+          }
+        ],
+        primary: [],
+        // Secondary: show Card Holder and Redeemed status (Apple Wallet style)
         secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'redemptionCounter'], data) : [],
-        auxiliary: this.buildFields('auxiliary', [], data),
+        // Auxiliary fields: Points display like Hilton Honors
+        auxiliary: [
+          {
+            key: 'points',
+            label: 'POINTS',
+            value: '12,345',
+            textAlignment: 'PKTextAlignmentRight'
+          }
+        ],
         back: this.buildFields('back', ['terms', 'contact', 'instructions'], data)
       }
     };
+
+    return config;
   }
 
   /**
@@ -245,14 +273,12 @@ class PassConfigService {
         label: 'rgb(255, 255, 255)'
       },
       fields: {
-        header: this.buildFields('header', ['campaign'], { campaignName }),
+        header: this.buildFields('header', ['redemptionCounter'], { stampsEarned, stampsRequired }),
         primary: this.buildFields('primary', ['balance'], { stampsEarned, stampsRequired }),
+        // Secondary fields: Card Holder and Redeemed status
         secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'redemptionCounter'], { 
           customerName, stampsEarned, stampsRequired 
         }) : [],
-        auxiliary: this.buildFields('auxiliary', ['nextReward'], { 
-          nextReward: `Free reward at ${stampsRequired} stamps` 
-        }),
         back: this.buildFields('back', ['terms', 'contact', 'instructions'], passData)
       }
     };
@@ -262,7 +288,7 @@ class PassConfigService {
    * Points card template
    */
   getPointsTemplate(passData) {
-    const { campaignName, customerName, pointsEarned = 0, membershipTier = 'Bronze' } = passData;
+    const { campaignName, customerName, pointsEarned = 0, membershipTier = 'Bronze', stampsEarned = 0, stampsRequired = 10 } = passData;
 
     return {
       colors: {
@@ -271,12 +297,12 @@ class PassConfigService {
         label: 'rgb(255, 255, 255)'
       },
       fields: {
-        header: this.buildFields('header', ['campaign'], { campaignName }),
+        header: this.buildFields('header', ['redemptionCounter'], { stampsEarned, stampsRequired }),
         primary: this.buildFields('primary', ['points'], { pointsEarned }),
-        secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'tier'], { 
-          customerName, membershipTier 
+        // Secondary fields: Card Holder and Redeemed status
+        secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'redemptionCounter'], { 
+          customerName, stampsEarned, stampsRequired 
         }) : [],
-        auxiliary: this.buildFields('auxiliary', [], {}),
         back: this.buildFields('back', ['terms', 'contact'], passData)
       }
     };
@@ -295,14 +321,12 @@ class PassConfigService {
         label: 'rgb(255, 255, 255)'
       },
       fields: {
-        header: this.buildFields('header', ['campaign'], { campaignName }),
+        header: this.buildFields('header', ['redemptionCounter'], { stampsEarned, stampsRequired }),
         primary: this.buildFields('primary', ['balance'], { stampsEarned, stampsRequired }),
-        secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'spendAmount'], { 
-          customerName, spendAmount 
+        // Secondary fields: Card Holder and Redeemed status
+        secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'redemptionCounter'], { 
+          customerName, stampsEarned, stampsRequired 
         }) : [],
-        auxiliary: this.buildFields('auxiliary', ['nextReward'], { 
-          nextReward: `Spend $${spendAmount} to earn stamp` 
-        }),
         back: this.buildFields('back', ['terms', 'contact', 'instructions'], passData)
       }
     };

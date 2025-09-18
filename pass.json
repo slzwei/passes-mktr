@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "passTypeIdentifier": "pass.com.mktr.wallet.new",
+  "serialNumber": "81f17ebc-d735-4684-a0e2-a9b257ff179a",
+  "teamIdentifier": "35L9ZSS9F9",
+  "organizationName": "Test",
+  "description": "Test Loyalty Card",
+  "logoText": "Test",
+  "logoTextAlignment": "PKTextAlignmentLeft",
+  "foregroundColor": "rgb(255, 255, 255)",
+  "backgroundColor": "rgb(139, 69, 19)",
+  "labelColor": "rgb(255, 255, 255)",
+  "storeCard": {
+    "headerFields": [
+      {
+        "key": "pointsValue",
+        "label": "POINTS",
+        "value": "1836",
+        "textAlignment": "PKTextAlignmentRight"
+      }
+    ]
+  },
+  "barcode": {
+    "message": "PASS_ID:a98fc50d-df09-4542-b2ae-042fcac08c46:CAMPAIGN_ID:550e8400-e29b-41d4-a716-446655440001:PARTNER_ID:default",
+    "format": "PKBarcodeFormatQR",
+    "messageEncoding": "iso-8859-1",
+    "altText": "Loyalty Card QR Code"
+  }
+}

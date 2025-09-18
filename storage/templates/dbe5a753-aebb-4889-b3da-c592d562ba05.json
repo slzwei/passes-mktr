@@ -1,0 +1,57 @@
+{
+  "id": "dbe5a753-aebb-4889-b3da-c592d562ba05",
+  "name": "Coffee Shop Loyalty Card",
+  "description": "A loyalty card template for coffee shops",
+  "category": "loyalty",
+  "passType": "generic",
+  "config": {
+    "formatVersion": 1,
+    "passTypeIdentifier": "pass.com.mktr.coffee",
+    "serialNumber": "TEMPLATE-001",
+    "teamIdentifier": "35L9ZSS9F9",
+    "organizationName": "MKTR Coffee",
+    "description": "Coffee Shop Loyalty Card",
+    "generic": {
+      "primaryFields": [
+        {
+          "key": "title",
+          "label": "Coffee Shop",
+          "value": "MKTR Coffee"
+        }
+      ],
+      "secondaryFields": [
+        {
+          "key": "points",
+          "label": "Points",
+          "value": "0"
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "createdBy": "anonymous",
+    "createdAt": "2025-09-16T14:36:49.200Z",
+    "updatedAt": "2025-09-16T14:36:49.200Z",
+    "version": 1,
+    "status": "draft",
+    "tags": [
+      "coffee",
+      "loyalty",
+      "template"
+    ],
+    "isPublic": true,
+    "teamId": null
+  },
+  "permissions": {
+    "owner": "anonymous",
+    "editors": [],
+    "viewers": [],
+    "collaborators": []
+  },
+  "stats": {
+    "views": 0,
+    "downloads": 0,
+    "uses": 0,
+    "lastUsed": null
+  }
+}

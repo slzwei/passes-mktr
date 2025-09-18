@@ -1,0 +1,26 @@
+HTTP/1.1 200 OK
+Content-Security-Policy: default-src 'self';style-src 'self' 'unsafe-inline';script-src 'self' 'unsafe-eval' 'unsafe-inline';img-src 'self' data: https: blob:;connect-src 'self' ws: wss: https:;worker-src 'self' blob:;child-src 'self' blob:;object-src 'none';base-uri 'self';form-action 'self';frame-ancestors 'none';font-src 'self' https: data:;script-src-attr 'none';upgrade-insecure-requests
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=15552000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+Vary: Origin
+Access-Control-Allow-Credentials: true
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 99
+Date: Thu, 18 Sep 2025 08:10:51 GMT
+X-RateLimit-Reset: 1758183952
+Content-Type: application/vnd.apple.pkpass
+Content-Disposition: attachment; filename="COFFEE_REWARDS_pass.pkpass"
+Content-Length: 139257
+ETag: W/"21ff9-0hNclftGuecfO2pXhafBjeEfNAE"
+Connection: keep-alive
+Keep-Alive: timeout=5
+

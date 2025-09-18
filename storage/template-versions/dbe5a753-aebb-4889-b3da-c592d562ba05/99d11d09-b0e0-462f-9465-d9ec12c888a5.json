@@ -1,0 +1,32 @@
+{
+  "id": "99d11d09-b0e0-462f-9465-d9ec12c888a5",
+  "templateId": "dbe5a753-aebb-4889-b3da-c592d562ba05",
+  "config": {
+    "formatVersion": 1,
+    "passTypeIdentifier": "pass.com.mktr.coffee",
+    "serialNumber": "TEMPLATE-001",
+    "teamIdentifier": "35L9ZSS9F9",
+    "organizationName": "MKTR Coffee",
+    "description": "Coffee Shop Loyalty Card",
+    "generic": {
+      "primaryFields": [
+        {
+          "key": "title",
+          "label": "Coffee Shop",
+          "value": "MKTR Coffee"
+        }
+      ],
+      "secondaryFields": [
+        {
+          "key": "points",
+          "label": "Points",
+          "value": "0"
+        }
+      ]
+    }
+  },
+  "message": "Initial version",
+  "createdBy": "anonymous",
+  "createdAt": "2025-09-16T14:36:49.201Z",
+  "isActive": true
+}

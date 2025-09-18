@@ -2,55 +2,90 @@
 // Generates a rounded "stamp strip" panel with 10 empty circles (2 rows × 5 columns)
 
 const sharp = require('sharp');
+const crypto = require('crypto');
+const fs = require('fs').promises;
+const { 
+  STRIP_W_1X, 
+  STRIP_H_1X, 
+  STRIP_W_2X, 
+  STRIP_H_2X, 
+  STRIP_W_3X, 
+  STRIP_H_3X, 
+  STRIP_SAFE_AREA_TOP,
+  STRIP_SAFE_AREA_BOTTOM,
+  STRIP_DEBUG 
+} = require('../shared/stripConstants.js');
+const { SolidLayoutCalculator } = require('./solidLayoutCalculator');
+const { SolidDimensionCalculator } = require('./solidDimensionCalculator');
 
 /**
  * Build a stamp strip panel as a PNG buffer (and @2x/@3x variants).
+ * Apple Wallet strip dimensions with safe area constraints.
  *
  * @param {Object} opts
- * @param {number} opts.width            - Panel width at 1x (px). Height is derived.
+ * @param {number} opts.width            - Panel width at 1x (px). Default 375 for Apple Wallet.
+ * @param {number} opts.height           - Panel height at 1x (px). Default 144 for Apple Wallet.
  * @param {number} opts.rows             - Number of rows (default 2).
  * @param {number} opts.cols             - Number of columns (default 5).
- * @param {number} opts.outerPad         - Padding between panel edge and first/last circles (px @1x).
+ * @param {number} opts.safeAreaTop      - Top safe area padding (px @1x). Default 20.
+ * @param {number} opts.safeAreaBottom   - Bottom safe area padding (px @1x). Default 20.
  * @param {number} opts.gap              - Gap between circles (px @1x).
- * @param {number} opts.cornerRadius     - Panel corner radius.
  * @param {string} opts.panelFill        - Panel background color (rgba / hex).
  * @param {string} opts.circleFill       - Circle fill color.
  * @param {string} opts.circleStroke     - Circle stroke color.
  * @param {number} opts.circleStrokePx   - Circle stroke width (px @1x).
- * @param {number} opts.aspect           - Height = width / aspect (default 360/180 ≈ 2:1 panel).
  * @param {string} opts.iconPath         - Path to icon image file (optional).
  * @param {number} opts.stampsEarned     - Number of stamps earned (for opacity).
  * @param {number} opts.stampsRequired   - Total number of stamps required.
  * @returns {Promise<{x1:Buffer,x2:Buffer,x3:Buffer, size:{w:number,h:number}}>}
  */
 async function buildStampStrip({
-  width = 360,
-  rows = 2,
-  cols = 5,
-  outerPad = 14,
-  gap = 12,
-  cornerRadius = 12,
+  width = STRIP_W_1X,        // Apple Wallet store card strip width (EXACT)
+  height = STRIP_H_1X,        // Apple Wallet store card strip height (EXACT)
+  rows = undefined,
+  cols = undefined,
+  safeAreaTop = undefined,
+  safeAreaBottom = undefined,
+  gap = undefined,
   panelFill = '#F5F5F5',
   circleFill = '#FFFFFF',
   circleStroke = '#D0D0D0',
-  circleStrokePx = 3,
-  aspect = (360 / 180), // width : height ~ 2:1 look
+  circleStrokePx = 2, // Stroke width
   iconPath = null,
   stampsEarned = 0,
   stampsRequired = 10
 } = {}) {
-  const height = Math.round(width / (width / (width / aspect))); // simplifies to width / (width/height) -> height
-  // compute inner "grid" area
-  const innerW = width - outerPad * 2;
-  const innerH = height - outerPad * 2;
+  // Unify to SOLID calculators (same as live preview)
+  const layoutCalculator = new SolidLayoutCalculator();
+  const dimensionCalculator = new SolidDimensionCalculator(layoutCalculator);
+  const dims = dimensionCalculator.calculateDimensions(stampsRequired, 1);
+  const layout = layoutCalculator.calculateOptimalLayout(stampsRequired);
 
-  // each grid cell size
-  const cellW = (innerW - gap * (cols - 1)) / cols;
-  const cellH = (innerH - gap * (rows - 1)) / rows;
+  const finalRows = rows ?? layout.rows;
+  const finalCols = cols ?? layout.cols;
+  const finalGap = Math.round(gap ?? dims.adjustedGap);
+  const finalSafeTop = Math.round(safeAreaTop ?? dims.safeAreaPadding);
+  const safeAreaHFromDims = Math.round(dims.safeAreaHeight);
+  const finalSafeBottom = Math.max(0, (safeAreaBottom ?? (height - finalSafeTop - safeAreaHFromDims)));
+  const opticalAdjustY = 0; // set to +1 or +2 if you want a tiny visual nudge down
 
-  // circle diameter fits the smaller dimension of the cell
-  const diameter = Math.floor(Math.min(cellW, cellH) * 0.95);
+  // compute safe area for stamp artwork
+  const safeAreaWidth = width;
+  const safeAreaHeight = height - finalSafeTop - finalSafeBottom;
+  
+  // Compute diameter based on available space
+  const gridWForCells = safeAreaWidth;
+  const gridHForCells = safeAreaHeight; // ALWAYS use safe area, even for single-row
+  const cellW = (gridWForCells - finalGap * (finalCols - 1)) / finalCols;
+  const cellH = (gridHForCells - finalGap * (finalRows - 1)) / finalRows;
+  let diameter = Math.max(1, Math.round(Math.min(cellW, cellH)));
   const radius = diameter / 2;
+
+  // Compute actual grid dimensions
+  const actualGridWidth  = (finalCols * diameter) + ((finalCols - 1) * finalGap);
+  const actualGridHeight = (finalRows * diameter) + ((finalRows - 1) * finalGap);
+  const startX = Math.round((width  - actualGridWidth)  / 2);
+  let startY = Math.round(finalSafeTop + (safeAreaHeight - actualGridHeight) / 2) + opticalAdjustY;
 
   // If iconPath is provided, use composite approach with icons
   if (iconPath) {
@@ -62,7 +97,7 @@ async function buildStampStrip({
           <feDropShadow dx="0" dy="2" stdDeviation="6" flood-opacity="0.18"/>
         </filter>
       </defs>
-      <rect x="0" y="0" width="${width}" height="${height}" rx="${cornerRadius}" ry="${cornerRadius}"
+      <rect x="0" y="0" width="${width}" height="${height}"
             fill="${panelFill}" filter="url(#shadow)"/>
     </svg>`;
 
@@ -71,11 +106,11 @@ async function buildStampStrip({
     // Prepare composites for icons
     const composites = [];
     
-    for (let i = 0; i < Math.min(rows * cols, stampsRequired); i++) {
-      const r = Math.floor(i / cols);
-      const c = i % cols;
-      const x = outerPad + c * (cellW + gap) + (cellW - diameter) / 2;
-      const y = outerPad + r * (cellH + gap) + (cellH - diameter) / 2;
+    for (let i = 0; i < Math.min(finalRows * finalCols, stampsRequired); i++) {
+      const r = Math.floor(i / finalCols);
+      const c = i % finalCols;
+      const x = startX + c * (diameter + finalGap);
+      const y = startY + r * (diameter + finalGap);
       
       const isRedeemed = i < stampsEarned;
       const opacity = isRedeemed ? 1.0 : 0.3;
@@ -107,10 +142,82 @@ async function buildStampStrip({
       });
     }
     
-    // Composite icons onto panel
-    const x1 = await sharp(panelBuffer).composite(composites).png().toBuffer();
-    const x2 = await sharp(x1).resize(width * 2, height * 2).png().toBuffer();
-    const x3 = await sharp(x1).resize(width * 3, height * 3).png().toBuffer();
+    // Composite icons onto panel and generate all three variants
+    let x1Sharp = sharp(panelBuffer).composite(composites);
+    
+    // Add magenta border for debug mode
+    if (STRIP_DEBUG) {
+      x1Sharp = x1Sharp.composite([{
+        input: Buffer.from(`
+          <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="${width}" height="${height}" 
+                  fill="none" stroke="magenta" stroke-width="1"/>
+            <!-- safe area guide -->
+            <rect x="0" y="${finalSafeTop}" width="${width}" height="${safeAreaHeight}"
+                  fill="none" stroke="cyan" stroke-dasharray="4,3" stroke-width="1"/>
+            <!-- true midline of safe area -->
+            <line x1="0" y1="${Math.round(finalSafeTop + safeAreaHeight/2)}" x2="${width}"
+                  y2="${Math.round(finalSafeTop + safeAreaHeight/2)}" stroke="cyan" stroke-width="1"/>
+          </svg>`),
+        blend: 'over'
+      }]);
+    }
+    
+    const x1 = await x1Sharp.png().toBuffer();
+    
+    let x2Sharp = sharp(x1).resize(STRIP_W_2X, STRIP_H_2X);
+    let x3Sharp = sharp(x1).resize(STRIP_W_3X, STRIP_H_3X);
+    
+    // Add magenta border for debug mode on @2x and @3x
+    if (STRIP_DEBUG) {
+      x2Sharp = x2Sharp.composite([{
+        input: Buffer.from(`
+          <svg width="${STRIP_W_2X}" height="${STRIP_H_2X}" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="${STRIP_W_2X}" height="${STRIP_H_2X}" 
+                  fill="none" stroke="magenta" stroke-width="2"/>
+          </svg>`),
+        blend: 'over'
+      }]);
+
+      x3Sharp = x3Sharp.composite([{
+        input: Buffer.from(`
+          <svg width="${STRIP_W_3X}" height="${STRIP_H_3X}" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="${STRIP_W_3X}" height="${STRIP_H_3X}" 
+                  fill="none" stroke="magenta" stroke-width="3"/>
+          </svg>`),
+        blend: 'over'
+      }]);
+    }
+    
+    const x2 = await x2Sharp.png().toBuffer();  // @2x: STRIP_W_2X×STRIP_H_2X - EXACT Apple spec
+    const x3 = await x3Sharp.png().toBuffer(); // @3x: STRIP_W_3X×STRIP_H_3X - EXACT Apple spec
+    
+    // Validate dimensions and add debug logging (icon path)
+    const x1Meta = await sharp(x1).metadata();
+    const x2Meta = await sharp(x2).metadata();
+    const x3Meta = await sharp(x3).metadata();
+
+    // Hard failure assertions
+    if (x1Meta.width !== width || x1Meta.height !== height) {
+      throw new Error(`STRIP ERROR: 1x dimensions ${x1Meta.width}x${x1Meta.height} !== ${width}x${height}`);
+    }
+    if (x2Meta.width !== STRIP_W_2X || x2Meta.height !== STRIP_H_2X) {
+      throw new Error(`STRIP ERROR: 2x dimensions ${x2Meta.width}x${x2Meta.height} !== ${STRIP_W_2X}x${STRIP_H_2X}`);
+    }
+    if (x3Meta.width !== STRIP_W_3X || x3Meta.height !== STRIP_H_3X) {
+      throw new Error(`STRIP ERROR: 3x dimensions ${x3Meta.width}x${x3Meta.height} !== ${STRIP_W_3X}x${STRIP_H_3X}`);
+    }
+
+    // Debug logging
+    if (STRIP_DEBUG) {
+      const sha1_1x = crypto.createHash('sha1').update(x1).digest('hex');
+      const sha1_2x = crypto.createHash('sha1').update(x2).digest('hex');
+      const sha1_3x = crypto.createHash('sha1').update(x3).digest('hex');
+
+      console.log(`STRIP DEBUG (buildStampStrip-icon): finalWidth=${x1Meta.width}, finalHeight=${x1Meta.height}`);
+      console.log(`STRIP DEBUG (buildStampStrip-icon): extract/trim rectangles used: NONE`);
+      console.log(`STRIP OK | 1x:${width}x${height} sha1=${sha1_1x} | 2x:${STRIP_W_2X}x${STRIP_H_2X} sha1=${sha1_2x} | 3x:${STRIP_W_3X}x${STRIP_H_3X} sha1=${sha1_3x} | extract=NONE`);
+    }
     
     return { x1, x2, x3, size: { w: width, h: height } };
   } else {
@@ -124,23 +231,95 @@ async function buildStampStrip({
       </defs>
 
       <!-- panel -->
-      <rect x="0" y="0" width="${width}" height="${height}" rx="${cornerRadius}" ry="${cornerRadius}"
+      <rect x="0" y="0" width="${width}" height="${height}"
             fill="${panelFill}" filter="url(#shadow)"/>
 
       <!-- circles -->
-      ${Array.from({ length: rows * cols }).map((_, i) => {
-        const r = Math.floor(i / cols);
-        const c = i % cols;
-        const cx = outerPad + c * (cellW + gap) + cellW / 2;
-        const cy = outerPad + r * (cellH + gap) + cellH / 2;
+      ${Array.from({ length: finalRows * finalCols }).map((_, i) => {
+        const r = Math.floor(i / finalCols);
+        const c = i % finalCols;
+        const cx = startX + c * (diameter + finalGap) + radius;
+        const cy = startY + r * (diameter + finalGap) + radius;
         return `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${(radius - circleStrokePx/2).toFixed(2)}"
                         fill="${circleFill}" stroke="${circleStroke}" stroke-width="${circleStrokePx}"/>`;
       }).join('\n')}
     </svg>`;
 
-    const x1 = await sharp(Buffer.from(svg)).png().toBuffer();
-    const x2 = await sharp(x1).resize(width * 2, height * 2).png().toBuffer();
-    const x3 = await sharp(x1).resize(width * 3, height * 3).png().toBuffer();
+    let x1Sharp = sharp(Buffer.from(svg));
+    
+    // Add magenta border for debug mode
+    if (STRIP_DEBUG) {
+      x1Sharp = x1Sharp.composite([{
+        input: Buffer.from(`
+          <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="${width}" height="${height}" 
+                  fill="none" stroke="magenta" stroke-width="1"/>
+            <!-- safe area guide -->
+            <rect x="0" y="${finalSafeTop}" width="${width}" height="${safeAreaHeight}"
+                  fill="none" stroke="cyan" stroke-dasharray="4,3" stroke-width="1"/>
+            <!-- true midline of safe area -->
+            <line x1="0" y1="${Math.round(finalSafeTop + safeAreaHeight/2)}" x2="${width}"
+                  y2="${Math.round(finalSafeTop + safeAreaHeight/2)}" stroke="cyan" stroke-width="1"/>
+          </svg>`),
+        blend: 'over'
+      }]);
+    }
+    
+    const x1 = await x1Sharp.png().toBuffer();
+    
+    let x2Sharp = sharp(x1).resize(STRIP_W_2X, STRIP_H_2X);
+    let x3Sharp = sharp(x1).resize(STRIP_W_3X, STRIP_H_3X);
+    
+    // Add magenta border for debug mode on @2x and @3x
+    if (STRIP_DEBUG) {
+      x2Sharp = x2Sharp.composite([{
+        input: Buffer.from(`
+          <svg width="${STRIP_W_2X}" height="${STRIP_H_2X}" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="${STRIP_W_2X}" height="${STRIP_H_2X}" 
+                  fill="none" stroke="magenta" stroke-width="2"/>
+          </svg>`),
+        blend: 'over'
+      }]);
+
+      x3Sharp = x3Sharp.composite([{
+        input: Buffer.from(`
+          <svg width="${STRIP_W_3X}" height="${STRIP_H_3X}" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="${STRIP_W_3X}" height="${STRIP_H_3X}" 
+                  fill="none" stroke="magenta" stroke-width="3"/>
+          </svg>`),
+        blend: 'over'
+      }]);
+    }
+    
+    const x2 = await x2Sharp.png().toBuffer();  // @2x: STRIP_W_2X×STRIP_H_2X - EXACT Apple spec
+    const x3 = await x3Sharp.png().toBuffer(); // @3x: STRIP_W_3X×STRIP_H_3X - EXACT Apple spec
+    
+    // Validate dimensions and add debug logging (circle-based)
+    const x1Meta = await sharp(x1).metadata();
+    const x2Meta = await sharp(x2).metadata();
+    const x3Meta = await sharp(x3).metadata();
+
+    // Hard failure assertions
+    if (x1Meta.width !== width || x1Meta.height !== height) {
+      throw new Error(`STRIP ERROR: 1x dimensions ${x1Meta.width}x${x1Meta.height} !== ${width}x${height}`);
+    }
+    if (x2Meta.width !== STRIP_W_2X || x2Meta.height !== STRIP_H_2X) {
+      throw new Error(`STRIP ERROR: 2x dimensions ${x2Meta.width}x${x2Meta.height} !== ${STRIP_W_2X}x${STRIP_H_2X}`);
+    }
+    if (x3Meta.width !== STRIP_W_3X || x3Meta.height !== STRIP_H_3X) {
+      throw new Error(`STRIP ERROR: 3x dimensions ${x3Meta.width}x${x3Meta.height} !== ${STRIP_W_3X}x${STRIP_H_3X}`);
+    }
+
+    // Debug logging
+    if (STRIP_DEBUG) {
+      const sha1_1x = crypto.createHash('sha1').update(x1).digest('hex');
+      const sha1_2x = crypto.createHash('sha1').update(x2).digest('hex');
+      const sha1_3x = crypto.createHash('sha1').update(x3).digest('hex');
+
+      console.log(`STRIP DEBUG (buildStampStrip-circle): finalWidth=${x1Meta.width}, finalHeight=${x1Meta.height}`);
+      console.log(`STRIP DEBUG (buildStampStrip-circle): extract/trim rectangles used: NONE`);
+      console.log(`STRIP OK | 1x:${width}x${height} sha1=${sha1_1x} | 2x:${STRIP_W_2X}x${STRIP_H_2X} sha1=${sha1_2x} | 3x:${STRIP_W_3X}x${STRIP_H_3X} sha1=${sha1_3x} | extract=NONE`);
+    }
     
     return { x1, x2, x3, size: { w: width, h: height } };
   }
