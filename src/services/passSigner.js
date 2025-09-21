@@ -137,8 +137,10 @@ class PassSigner {
 
     // Determine if logo text should be hidden based on processed images
     const shouldHideLogoText = processedImages && processedImages.hideLogoText;
+    // Check if placeholder logo should be removed (no logo at all)
+    const shouldRemovePlaceholderLogo = passData.removePlaceholderLogo && !passData.images?.logo && !passData.images?.logoImage;
     
-    logger.info(`Logo format info - Format: ${processedImages?.logoFormat}, Hide logo text: ${shouldHideLogoText}`);
+    logger.info(`Logo format info - Format: ${processedImages?.logoFormat}, Hide logo text: ${shouldHideLogoText}, Remove placeholder logo: ${shouldRemovePlaceholderLogo}`);
     
     const passJson = {
       formatVersion: 1,
@@ -148,14 +150,16 @@ class PassSigner {
       organizationName: tenantName || 'MKTR',
       description: campaignName ? `${campaignName} Loyalty Card` : 'Loyalty Card',
       // Only include logoText if it should not be hidden (wide logo format) and campaignName is not empty
+      // Note: Logo text is independent of placeholder logo removal
       ...(shouldHideLogoText || !campaignName ? {} : { 
-        logoText: campaignName,
+        logoText: `    ${campaignName}`, // Add small left margin with 2 spaces
         logoTextAlignment: 'PKTextAlignmentLeft'
       }),
       foregroundColor: finalColors.foreground,
       backgroundColor: finalColors.background,
       labelColor: finalColors.label,
       ...(passData.hasExpiryDate && passData.expirationDate ? { expirationDate: new Date(passData.expirationDate).toISOString() } : {}),
+      ...(passData.suppressStripShine !== undefined ? { suppressStripShine: passData.suppressStripShine } : { suppressStripShine: true }),
       storeCard: {
         headerFields: fieldConfig.fields.header,
         primaryFields: fieldConfig.fields.primary,
@@ -167,7 +171,7 @@ class PassSigner {
         message: `PASS_ID:${uuidv4()}:CAMPAIGN_ID:${campaignId}:PARTNER_ID:${partnerId || 'default'}`,
         format: 'PKBarcodeFormatQR',
         messageEncoding: 'iso-8859-1',
-        altText: passData.qrAltText || 'Loyalty Card QR Code'
+        altText: passData.qrAltText || ''
       }
     };
 
@@ -293,6 +297,9 @@ class PassSigner {
       const hasStamps = uploadedImages && uploadedImages.strip && uploadedImages.stampsEarned !== undefined;
       const shouldSkipStrips = hasStamps && includeStrips;
       
+      // Check if we should remove placeholder logo
+      const shouldRemovePlaceholderLogo = passData && passData.removePlaceholderLogo && !uploadedImages?.logo && !uploadedImages?.logoImage;
+      
       if (uploadedImages && (uploadedImages.logo || uploadedImages.icon || uploadedImages.strip || uploadedImages.stampIcon)) {
         // Process uploaded images first, then use them
         logger.info('Processing uploaded images for pass generation');
@@ -310,6 +317,14 @@ class PassSigner {
         // Use existing processed images, but skip strips if we're going to generate custom stamps
         const skipStrips = includeStrips && passData && (passData.stampsRequired > 0);
         imagePaths = await this.imageProcessor.getProcessedImagePaths(skipStrips ? false : includeStrips);
+      }
+      
+      // Remove logo from imagePaths if removePlaceholderLogo is true
+      if (shouldRemovePlaceholderLogo && imagePaths) {
+        logger.info('Removing placeholder logo from pass generation');
+        delete imagePaths.logo;
+        delete imagePaths.logo2x;
+        delete imagePaths.logo3x;
       }
       
       // Copy processed images to pass directory

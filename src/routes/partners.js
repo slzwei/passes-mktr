@@ -24,13 +24,115 @@ const mockPartners = [
     isActive: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'partner-2',
+    tenantId: 'tenant-1',
+    name: 'Retail Store',
+    email: 'partner@retailstore.com',
+    phone: '+65 9876 5432',
+    address: {
+      street: '456 Marina Bay',
+      city: 'Singapore',
+      postalCode: '018956',
+      country: 'Singapore'
+    },
+    settings: {
+      commissionRate: 0.03,
+      paymentTerms: 'net15',
+      autoApprove: false
+    },
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
+
+// Mock campaign data with partner relationships
+const mockCampaigns = [
+  {
+    id: 'campaign-1',
+    tenantId: 'tenant-1',
+    partnerId: 'partner-1',
+    name: 'Coffee Loyalty Program',
+    description: 'Earn stamps for every coffee purchase',
+    type: 'redemption',
+    settings: {
+      stampsRequired: 10,
+      reward: 'Free coffee',
+      expiryDays: 365,
+      maxStamps: 20
+    },
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'campaign-2',
+    tenantId: 'tenant-1',
+    partnerId: 'partner-1',
+    name: 'Coffee Points Rewards',
+    description: 'Accumulate points for coffee purchases',
+    type: 'points',
+    settings: {
+      pointsPerDollar: 1,
+      redemptionRate: 100,
+      expiryDays: 180
+    },
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'campaign-3',
+    tenantId: 'tenant-1',
+    partnerId: 'partner-2',
+    name: 'Retail Rewards',
+    description: 'Earn points for retail purchases',
+    type: 'points',
+    settings: {
+      pointsPerDollar: 2,
+      redemptionRate: 200,
+      expiryDays: 365
+    },
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
+
+// Mock pass statistics data
+const mockPassStats = [
+  {
+    campaignId: 'campaign-1',
+    partnerId: 'partner-1',
+    totalPasses: 1250,
+    activePasses: 980,
+    redeemedPasses: 270,
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    campaignId: 'campaign-2',
+    partnerId: 'partner-1',
+    totalPasses: 2100,
+    activePasses: 1850,
+    redeemedPasses: 250,
+    lastUpdated: new Date().toISOString()
+  },
+  {
+    campaignId: 'campaign-3',
+    partnerId: 'partner-2',
+    totalPasses: 850,
+    activePasses: 720,
+    redeemedPasses: 130,
+    lastUpdated: new Date().toISOString()
   }
 ];
 
 // GET /api/partners - List all partners
 router.get('/', (req, res) => {
   try {
-    const { tenantId, isActive } = req.query;
+    const { tenantId, isActive, search } = req.query;
     let filteredPartners = [...mockPartners];
     
     if (tenantId) {
@@ -39,6 +141,15 @@ router.get('/', (req, res) => {
     
     if (isActive !== undefined) {
       filteredPartners = filteredPartners.filter(p => p.isActive === (isActive === 'true'));
+    }
+    
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredPartners = filteredPartners.filter(p => 
+        p.name.toLowerCase().includes(searchLower) ||
+        p.email.toLowerCase().includes(searchLower) ||
+        (p.phone && p.phone.includes(search))
+      );
     }
     
     logger.info('Fetching partners list');
@@ -52,6 +163,91 @@ router.get('/', (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch partners'
+    });
+  }
+});
+
+// GET /api/partners/:id/campaigns - Get campaigns for a partner
+router.get('/:id/campaigns', (req, res) => {
+  try {
+    const { id } = req.params;
+    const partner = mockPartners.find(p => p.id === id);
+    
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        error: 'Partner not found'
+      });
+    }
+    
+    const partnerCampaigns = mockCampaigns.filter(c => c.partnerId === id);
+    
+    logger.info(`Fetching campaigns for partner: ${id}`);
+    res.json({
+      success: true,
+      data: partnerCampaigns,
+      count: partnerCampaigns.length
+    });
+  } catch (error) {
+    logger.error('Error fetching partner campaigns:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch partner campaigns'
+    });
+  }
+});
+
+// GET /api/partners/:id/statistics - Get pass statistics for a partner
+router.get('/:id/statistics', (req, res) => {
+  try {
+    const { id } = req.params;
+    const partner = mockPartners.find(p => p.id === id);
+    
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        error: 'Partner not found'
+      });
+    }
+    
+    const partnerStats = mockPassStats.filter(s => s.partnerId === id);
+    const campaigns = mockCampaigns.filter(c => c.partnerId === id);
+    
+    // Combine campaign data with statistics
+    const campaignStats = campaigns.map(campaign => {
+      const stats = partnerStats.find(s => s.campaignId === campaign.id);
+      return {
+        ...campaign,
+        statistics: stats || {
+          totalPasses: 0,
+          activePasses: 0,
+          redeemedPasses: 0,
+          lastUpdated: new Date().toISOString()
+        }
+      };
+    });
+    
+    // Calculate totals
+    const totals = partnerStats.reduce((acc, stat) => ({
+      totalPasses: acc.totalPasses + stat.totalPasses,
+      activePasses: acc.activePasses + stat.activePasses,
+      redeemedPasses: acc.redeemedPasses + stat.redeemedPasses
+    }), { totalPasses: 0, activePasses: 0, redeemedPasses: 0 });
+    
+    logger.info(`Fetching statistics for partner: ${id}`);
+    res.json({
+      success: true,
+      data: {
+        partner,
+        campaigns: campaignStats,
+        totals
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching partner statistics:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch partner statistics'
     });
   }
 });
@@ -86,12 +282,12 @@ router.get('/:id', (req, res) => {
 // POST /api/partners - Create new partner
 router.post('/', (req, res) => {
   try {
-    const { tenantId, name, email, phone, address, settings } = req.body;
+    const { tenantId, name, email, phone, address } = req.body;
     
-    if (!tenantId || !name || !email) {
+    if (!tenantId || !name) {
       return res.status(400).json({
         success: false,
-        error: 'Tenant ID, name, and email are required'
+        error: 'Tenant ID and name are required'
       });
     }
     
@@ -99,10 +295,10 @@ router.post('/', (req, res) => {
       id: `partner-${Date.now()}`,
       tenantId,
       name,
-      email,
+      email: email || '',
       phone: phone || '',
       address: address || {},
-      settings: settings || {
+      settings: {
         commissionRate: 0.05,
         paymentTerms: 'net30',
         autoApprove: true
@@ -145,7 +341,7 @@ router.put('/:id', (req, res) => {
     const updatedPartner = {
       ...mockPartners[partnerIndex],
       ...(name && { name }),
-      ...(email && { email }),
+      ...(email !== undefined && { email }),
       ...(phone !== undefined && { phone }),
       ...(address && { address }),
       ...(settings && { settings }),

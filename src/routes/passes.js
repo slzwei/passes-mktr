@@ -364,6 +364,7 @@ router.post('/generate-working', async (req, res) => {
       qrAltText,
       expirationDate,
       hasExpiryDate = false,
+      removePlaceholderLogo = false,
       fieldConfig = null
     } = req.body;
 
@@ -380,6 +381,7 @@ router.post('/generate-working', async (req, res) => {
       stampsRequired: stampsRequired || 10,
       expirationDate: expirationDate,
       hasExpiryDate: hasExpiryDate,
+      removePlaceholderLogo: removePlaceholderLogo,
       colors: {
         foreground: 'rgb(255, 255, 255)',
         background: 'rgb(139, 69, 19)', // Coffee brown
@@ -422,10 +424,273 @@ router.post('/generate-working', async (req, res) => {
     });
 
   } catch (error) {
-    logger.error('Working pass generation failed:', error);
+    logger.error('Working pass generation failed:', {
+      error: error.message,
+      stack: error.stack,
+      passData: {
+        campaignId: req.body.campaignId,
+        campaignName: req.body.campaignName,
+        stampsEarned: req.body.stampsEarned,
+        stampsRequired: req.body.stampsRequired
+      }
+    });
+    
+    // Provide more specific error messages
+    let statusCode = 500;
+    let errorMessage = 'Failed to generate pass';
+    
+    if (error.message.includes('ENOENT') || error.message.includes('not found')) {
+      statusCode = 400;
+      errorMessage = 'Required assets or certificates not found. Please check server configuration.';
+    } else if (error.message.includes('certificate') || error.message.includes('signing')) {
+      statusCode = 400;
+      errorMessage = 'Pass signing failed. Please check Apple Developer certificates.';
+    } else if (error.message.includes('permission') || error.message.includes('EACCES')) {
+      statusCode = 500;
+      errorMessage = 'Server permission error. Please check file system permissions.';
+    }
+    
+    res.status(statusCode).json({
+      error: errorMessage,
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * POST /api/passes/generate-demo
+ * Generate a demo pass for testing purposes
+ */
+router.post('/generate-demo', async (req, res) => {
+  try {
+    const {
+      passDesign,
+      passType = 'redemption',
+      campaignData,
+      tenantData
+    } = req.body;
+
+    logger.info('Generating demo pass', {
+      passType,
+      campaignName: campaignData?.campaignName,
+      tenantName: tenantData?.companyName,
+      hasPassDesign: !!passDesign,
+      designColors: passDesign?.colors,
+      designImages: passDesign?.images,
+      designFieldConfig: passDesign?.fieldConfig
+    });
+
+    // Normalize fieldConfig structure - handle both frontend and expected backend formats
+    const normalizeFieldConfig = (fieldConfig) => {
+      if (!fieldConfig) {
+        return {
+          fields: {
+            header: [],
+            primary: [],
+            secondary: [],
+            auxiliary: [],
+            back: []
+          }
+        };
+      }
+
+      // If it already has the correct structure with 'fields' property
+      if (fieldConfig.fields) {
+        return fieldConfig;
+      }
+
+      // If it's the frontend format with direct field counts, convert it
+      if (typeof fieldConfig === 'object' && !Array.isArray(fieldConfig)) {
+        return {
+          fields: {
+            header: Array(fieldConfig.header || 0).fill(null).map((_, i) => ({
+              key: `header_${i}`,
+              label: `Header Field ${i + 1}`,
+              value: `Header ${i + 1}`
+            })),
+            primary: Array(fieldConfig.primary || 0).fill(null).map((_, i) => ({
+              key: `primary_${i}`,
+              label: `Primary Field ${i + 1}`,
+              value: `Primary ${i + 1}`
+            })),
+            secondary: Array(fieldConfig.secondary || 0).fill(null).map((_, i) => ({
+              key: `secondary_${i}`,
+              label: `Secondary Field ${i + 1}`,
+              value: `Secondary ${i + 1}`
+            })),
+            auxiliary: Array(fieldConfig.auxiliary || 0).fill(null).map((_, i) => ({
+              key: `auxiliary_${i}`,
+              label: `Auxiliary Field ${i + 1}`,
+              value: `Auxiliary ${i + 1}`
+            })),
+            back: []
+          }
+        };
+      }
+
+      // Default fallback
+      return {
+        fields: {
+          header: [],
+          primary: [],
+          secondary: [],
+          auxiliary: [],
+          back: []
+        }
+      };
+    };
+
+    // Extract and normalize design data from Step 1
+    const designColors = passDesign?.colors || {};
+    const designImages = passDesign?.images || {};
+    
+    // Convert design colors to pass colors format
+    const passColors = {
+      foreground: designColors.foreground || 'rgb(255, 255, 255)',
+      background: designColors.background || designColors.primary || '#8B5CF6',
+      label: designColors.label || designColors.foreground || 'rgb(255, 255, 255)',
+      // Handle both old and new color format
+      ...(designColors.primary && { background: designColors.primary }),
+      ...(designColors.secondary && { labelColor: designColors.secondary })
+    };
+
+    logger.info('Using colors for pass generation', { 
+      originalColors: designColors, 
+      convertedColors: passColors 
+    });
+
+    // Create demo pass data structure
+    const demoPassData = {
+      campaignId: 'demo-' + Date.now(),
+      serialNumber: 'DEMO-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
+      campaignName: campaignData?.campaignName || 'Demo Campaign',
+      tenantName: tenantData?.companyName || 'Demo Company',
+      customerEmail: 'demo@example.com',
+      customerName: 'Demo User',
+      stampsRequired: campaignData?.stampsRequired || 5,
+      stampsEarned: campaignData?.stampsEarned || 2,
+      passType: passType,
+      cleanStrip: false,
+      colors: passColors,
+      images: designImages,
+      fieldConfig: normalizeFieldConfig(passDesign?.fieldConfig),
+      // Add expiry date if specified
+      ...(campaignData?.hasExpiryDate && campaignData?.expirationDate ? {
+        hasExpiryDate: true,
+        expirationDate: campaignData.expirationDate
+      } : {})
+    };
+
+    // Build back fields from Step 2 form data
+    const backFields = [];
+    
+    // Terms & Conditions - always include
+    if (campaignData?.termsAndConditions) {
+      backFields.push({
+        key: 'terms',
+        label: 'Terms & Conditions',
+        value: campaignData.termsAndConditions,
+        textAlignment: 'PKTextAlignmentLeft'
+      });
+    }
+    
+    // Reward Breakdown - always include if provided
+    if (campaignData?.rewardBreakdown) {
+      backFields.push({
+        key: 'rewards',
+        label: 'Reward Breakdown',
+        value: campaignData.rewardBreakdown,
+        textAlignment: 'PKTextAlignmentLeft'
+      });
+    }
+    
+    // Contact Information - build from available fields
+    const contactInfo = [];
+    if (campaignData?.contactEmail) contactInfo.push(`Email: ${campaignData.contactEmail}`);
+    if (campaignData?.contactPhone) contactInfo.push(`Phone: ${campaignData.contactPhone}`);
+    if (campaignData?.contactWebsite) contactInfo.push(`Website: ${campaignData.contactWebsite}`);
+    
+    if (contactInfo.length > 0) {
+      backFields.push({
+        key: 'contact',
+        label: 'Contact Information',
+        value: contactInfo.join('\n'),
+        textAlignment: 'PKTextAlignmentLeft'
+      });
+    }
+    
+    // Store Locator - if provided
+    if (campaignData?.storeLocatorLink) {
+      backFields.push({
+        key: 'storeLocator',
+        label: 'Store Locator',
+        value: campaignData.storeLocatorLink,
+        textAlignment: 'PKTextAlignmentLeft'
+      });
+    }
+    
+    // Campaign Information
+    if (campaignData?.description) {
+      backFields.push({
+        key: 'description',
+        label: 'About This Campaign',
+        value: campaignData.description,
+        textAlignment: 'PKTextAlignmentLeft'
+      });
+    }
+    
+    // Add dates if available
+    const dateInfo = [];
+    if (campaignData?.startDate) dateInfo.push(`Start: ${new Date(campaignData.startDate).toLocaleDateString()}`);
+    if (campaignData?.endDate) dateInfo.push(`End: ${new Date(campaignData.endDate).toLocaleDateString()}`);
+    
+    if (dateInfo.length > 0) {
+      backFields.push({
+        key: 'dates',
+        label: 'Campaign Period',
+        value: dateInfo.join('\n'),
+        textAlignment: 'PKTextAlignmentLeft'
+      });
+    }
+
+    // Set back fields (override any existing ones to use form data)
+    demoPassData.fieldConfig.fields.back = backFields.length > 0 ? backFields : [
+      {
+        key: 'default',
+        label: 'Information',
+        value: 'Thank you for participating in our loyalty program!',
+        textAlignment: 'PKTextAlignmentLeft'
+      }
+    ];
+
+    // Generate the demo pass using the existing PassSigner
+    const pkpassPath = await passSigner.generatePass(demoPassData);
+
+    // Read the generated file and send it
+    const passBuffer = await fs.readFile(pkpassPath);
+    
+    res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
+    res.setHeader('Content-Disposition', `attachment; filename="demo_${campaignData?.campaignName?.replace(/\s+/g, '_') || 'pass'}.pkpass"`);
+    res.send(passBuffer);
+
+    logger.info('Demo pass generated successfully', {
+      serialNumber: demoPassData.serialNumber,
+      fileSize: passBuffer.length,
+      campaignName: campaignData?.campaignName
+    });
+
+  } catch (error) {
+    logger.error('Demo pass generation failed:', {
+      error: error.message,
+      stack: error.stack,
+      campaignData: req.body.campaignData
+    });
+    
     res.status(500).json({
-      error: 'Failed to generate pass',
-      message: error.message
+      error: 'Failed to generate demo pass',
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
