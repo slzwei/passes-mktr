@@ -27,9 +27,11 @@ class PassConfigService {
         secondary: [],
         auxiliary: [],
         back: [
-          fieldTemplates.back.terms,
+          fieldTemplates.back.campaignDetails,
+          fieldTemplates.back.rewards,
           fieldTemplates.back.contact,
-          fieldTemplates.back.instructions
+          fieldTemplates.back.terms,
+          fieldTemplates.back.storeLocator
         ]
       },
       images: {
@@ -72,7 +74,7 @@ class PassConfigService {
   buildFields(fieldType, fieldConfigs, data = {}) {
     validateFieldConfig(fieldType, fieldConfigs);
     
-    return fieldConfigs.map(config => {
+    const fields = fieldConfigs.map(config => {
       if (typeof config === 'string') {
         // If it's a template key, build from template
         return this.buildFieldConfig(fieldType, config, data);
@@ -86,6 +88,21 @@ class PassConfigService {
         };
       }
     });
+
+    // Filter out fields with empty values for back fields only
+    if (fieldType === 'back') {
+      return fields.filter(field => {
+        const value = field.value;
+        // Keep field if it has meaningful content (not just empty strings or template placeholders)
+        return value && 
+               value.trim() !== '' && 
+               !value.includes('{{') && // Remove unresolved templates
+               value !== 'undefined' &&
+               value !== 'null';
+      });
+    }
+
+    return fields;
   }
 
   /**
@@ -99,7 +116,17 @@ class PassConfigService {
       stampsRequired = 10,
       customerEmail,
       expirationDate,
-      hasExpiryDate = false
+      hasExpiryDate = false,
+      // Campaign details for back fields
+      startDate,
+      endDate,
+      location,
+      targetAudience,
+      contactPhone,
+      contactWebsite,
+      storeLocatorLink,
+      rewardBreakdown,
+      termsAndConditions
     } = passData;
 
     const data = {
@@ -109,6 +136,17 @@ class PassConfigService {
       stampsRequired,
       customerEmail,
       progressPercentage: Math.round((stampsEarned / stampsRequired) * 100),
+      // Campaign details for back fields
+      startDate: startDate || '',
+      endDate: endDate || '',
+      location: location || '',
+      targetAudience: targetAudience || '',
+      contactEmail: customerEmail || '',
+      contactPhone: contactPhone || '',
+      contactWebsite: contactWebsite || '',
+      storeLocatorLink: storeLocatorLink || '',
+      rewardBreakdown: rewardBreakdown || 'Show this pass to staff when making a purchase to earn stamps.',
+      termsAndConditions: termsAndConditions || 'Valid at participating locations. Not transferable. Expires 1 year from issue date.',
       ...(expirationDate && hasExpiryDate ? (() => {
         const d = new Date(expirationDate);
         if (isNaN(d.getTime())) return {};
@@ -126,27 +164,29 @@ class PassConfigService {
         label: 'rgb(255, 255, 255)'
       },
       fields: {
-        header: [
-          {
-            key: 'pointsValue',
-            label: 'POINTS',
-            value: '1836',
-            textAlignment: 'PKTextAlignmentRight'
+        // Header: show expiry if available, otherwise status
+        header: (() => {
+          if (expirationDate && hasExpiryDate) {
+            return this.buildFields('header', ['expiryHeader'], data);
+          } else {
+            return this.buildFields('header', ['status'], data);
           }
-        ],
+        })(),
+        // Primary: empty for clean strip design (stamps are visual on strip)
         primary: [],
-        // Secondary: show Card Holder and Redeemed status (Apple Wallet style)
+        // Secondary: show Card Holder and Redeemed status
         secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'redemptionCounter'], data) : [],
-        // Auxiliary fields: Points display like Hilton Honors
-        auxiliary: [
-          {
-            key: 'points',
-            label: 'POINTS',
-            value: '12,345',
-            textAlignment: 'PKTextAlignmentRight'
-          }
-        ],
-        back: this.buildFields('back', ['terms', 'contact', 'instructions'], data)
+        // Auxiliary fields: Keep empty for clean design
+        auxiliary: [],
+        back: (() => {
+          const backFields = this.buildFields('back', ['campaignDetails', 'rewards', 'contact', 'terms', 'storeLocator'], data);
+          logger.info('Generated back fields for loyalty card:', { 
+            count: backFields.length,
+            fields: backFields.map(f => ({ key: f.key, label: f.label, valueLength: f.value?.length || 0, hasValue: !!f.value })),
+            dataKeys: Object.keys(data)
+          });
+          return backFields;
+        })()
       }
     };
 
@@ -279,7 +319,7 @@ class PassConfigService {
         secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'redemptionCounter'], { 
           customerName, stampsEarned, stampsRequired 
         }) : [],
-        back: this.buildFields('back', ['terms', 'contact', 'instructions'], passData)
+        back: this.buildFields('back', ['campaignDetails', 'rewards', 'contact', 'terms', 'storeLocator'], data)
       }
     };
   }
@@ -303,7 +343,7 @@ class PassConfigService {
         secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'redemptionCounter'], { 
           customerName, stampsEarned, stampsRequired 
         }) : [],
-        back: this.buildFields('back', ['terms', 'contact'], passData)
+        back: this.buildFields('back', ['campaignDetails', 'rewards', 'contact', 'terms', 'storeLocator'], data)
       }
     };
   }
@@ -327,7 +367,7 @@ class PassConfigService {
         secondary: customerName ? this.buildFields('secondary', ['customerInfo', 'redemptionCounter'], { 
           customerName, stampsEarned, stampsRequired 
         }) : [],
-        back: this.buildFields('back', ['terms', 'contact', 'instructions'], passData)
+        back: this.buildFields('back', ['campaignDetails', 'rewards', 'contact', 'terms', 'storeLocator'], data)
       }
     };
   }

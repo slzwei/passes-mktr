@@ -1,6 +1,12 @@
 const QRCode = require('qrcode');
 const JsBarcode = require('jsbarcode');
-const { createCanvas } = require('canvas');
+let createCanvas;
+try {
+  createCanvas = require('canvas').createCanvas;
+} catch (error) {
+  console.warn('Canvas module not available, some barcode features may be limited:', error.message);
+  createCanvas = null;
+}
 const fs = require('fs').promises;
 const path = require('path');
 const logger = require('../utils/logger');
@@ -126,6 +132,9 @@ class BarcodeService {
    */
   async generateLinearBarcode(data, format, options) {
     try {
+      if (!createCanvas) {
+        throw new Error('Canvas module not available. Cannot generate linear barcodes.');
+      }
       const canvas = createCanvas(options.width || 200, options.height || 100);
       
       const barcodeOptions = {
@@ -156,6 +165,9 @@ class BarcodeService {
    */
   async generatePDF417(data, options) {
     try {
+      if (!createCanvas) {
+        throw new Error('Canvas module not available. Cannot generate PDF417 barcodes.');
+      }
       const canvas = createCanvas(options.width || 200, options.height || 100);
       
       const barcodeOptions = {
@@ -228,7 +240,7 @@ class BarcodeService {
       const {
         format = 'qr',
         message = passData.serialNumber || passData.id,
-        altText = 'Barcode',
+        altText = '',
         options = {}
       } = barcodeConfig;
 

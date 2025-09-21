@@ -96,8 +96,13 @@ const fieldTemplates = {
       label: '',
       value: '{{stampsEarned}} / {{stampsRequired}}',
       textAlignment: 'PKTextAlignmentRight'
-    }
-    ,
+    },
+    status: {
+      key: 'status',
+      label: 'STATUS',
+      value: 'Active',
+      textAlignment: 'PKTextAlignmentRight'
+    },
     expiryHeader: {
       key: 'expiry',
       label: 'EXP',
@@ -125,6 +130,12 @@ const fieldTemplates = {
       label: 'Progress',
       value: '{{progressPercentage}}% Complete',
       textAlignment: 'PKTextAlignmentCenter'
+    },
+    stampsEarned: {
+      key: 'stampsEarned',
+      label: '',
+      value: '{{stampsEarned}}',
+      textAlignment: 'PKTextAlignmentCenter'
     }
   },
 
@@ -138,9 +149,9 @@ const fieldTemplates = {
     },
     redemptionCounter: {
       key: 'redemptionCounter',
-      label: 'Redeemed',
+      label: 'REDEEMED',
       value: '{{stampsEarned}} out of {{stampsRequired}}',
-      textAlignment: 'PKTextAlignmentLeft'
+      textAlignment: 'PKTextAlignmentRight'
     },
     expiry: {
       key: 'expiry',
@@ -171,13 +182,13 @@ const fieldTemplates = {
     terms: {
       key: 'terms',
       label: 'Terms & Conditions',
-      value: 'Valid at participating locations. Not transferable. Expires 1 year from issue date.',
+      value: '{{termsAndConditions}}',
       textAlignment: 'PKTextAlignmentLeft'
     },
     contact: {
       key: 'contact',
-      label: 'Contact',
-      value: '{{customerEmail}}',
+      label: 'Contact Information',
+      value: 'Email: {{contactEmail}}\nPhone: {{contactPhone}}\n{{contactWebsite}}',
       textAlignment: 'PKTextAlignmentLeft'
     },
     instructions: {
@@ -188,8 +199,20 @@ const fieldTemplates = {
     },
     rewards: {
       key: 'rewards',
-      label: 'Reward Tiers',
-      value: '5 stamps: Free pastry\n10 stamps: Free coffee\n15 stamps: Free meal',
+      label: 'Reward Breakdown',
+      value: '{{rewardBreakdown}}',
+      textAlignment: 'PKTextAlignmentLeft'
+    },
+    campaignDetails: {
+      key: 'campaignDetails',
+      label: 'Campaign Details',
+      value: 'Campaign: {{campaignName}}\nPeriod: {{startDate}} - {{endDate}}\nLocation: {{location}}\nTarget: {{targetAudience}}',
+      textAlignment: 'PKTextAlignmentLeft'
+    },
+    storeLocator: {
+      key: 'storeLocator',
+      label: 'Find Locations',
+      value: '{{storeLocatorLink}}',
       textAlignment: 'PKTextAlignmentLeft'
     }
   }
