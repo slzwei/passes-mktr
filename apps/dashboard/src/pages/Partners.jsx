@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/components/ui/use-toast";
+import { useToastContext } from "@/components/ui/ToastProvider";
 import { Partners as PartnersAPI } from "@/api/entities";
 import PartnerForm from "@/components/PartnerForm";
 import { 
@@ -23,7 +23,7 @@ import {
 
 export default function Partners() {
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { success, error } = useToastContext();
   const [partners, setPartners] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -43,12 +43,8 @@ export default function Partners() {
         search: searchTerm 
       });
       setPartners(response.data);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load partners",
-        variant: "destructive",
-      });
+    } catch (err) {
+      error("Error", err.message || "Failed to load partners");
     } finally {
       setIsLoading(false);
     }
@@ -81,16 +77,9 @@ export default function Partners() {
       await PartnersAPI.delete(id);
       await loadPartners();
       
-      toast({
-        title: "Success",
-        description: "Partner deleted successfully",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete partner",
-        variant: "destructive",
-      });
+      success("Success", "Partner deleted successfully");
+    } catch (err) {
+      error("Error", err.message || "Failed to delete partner");
     } finally {
       setDeletingId(null);
     }

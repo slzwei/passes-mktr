@@ -1,13 +1,12 @@
 import './App.css'
 import Pages from "@/pages/index.jsx"
-import { Toaster } from "@/components/ui/toaster"
+import ToastProvider from "@/components/ui/ToastProvider"
 
 function App() {
   return (
-    <>
+    <ToastProvider>
       <Pages />
-      <Toaster />
-    </>
+    </ToastProvider>
   )
 }
 

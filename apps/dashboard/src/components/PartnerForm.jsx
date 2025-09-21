@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { useToast } from '@/components/ui/use-toast';
+import { useToastContext } from '@/components/ui/ToastProvider';
 import { X, Save, User } from 'lucide-react';
 
 const PartnerForm = ({ 
@@ -15,7 +15,7 @@ const PartnerForm = ({
   partner = null, 
   mode = 'create' 
 }) => {
-  const { toast } = useToast();
+  const { success, error } = useToastContext();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -79,11 +79,7 @@ const PartnerForm = ({
     e.preventDefault();
     
     if (!formData.name.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Partner name is required",
-        variant: "destructive",
-      });
+      error("Validation Error", "Partner name is required");
       return;
     }
 
@@ -102,18 +98,11 @@ const PartnerForm = ({
 
       await onSave(partnerData);
       
-      toast({
-        title: "Success",
-        description: `Partner ${mode === 'create' ? 'created' : 'updated'} successfully`,
-      });
+      success("Success", `Partner ${mode === 'create' ? 'created' : 'updated'} successfully`);
       
       onClose();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error.message || `Failed to ${mode === 'create' ? 'create' : 'update'} partner`,
-        variant: "destructive",
-      });
+    } catch (err) {
+      error("Error", err.message || `Failed to ${mode === 'create' ? 'create' : 'update'} partner`);
     } finally {
       setIsLoading(false);
     }
