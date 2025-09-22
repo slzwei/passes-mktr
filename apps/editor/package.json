@@ -23,11 +23,11 @@
     "web-vitals": "^3.5.0"
   },
   "scripts": {
-    "dev": "DISABLE_ESLINT_PLUGIN=true PORT=5174 BROWSER=none ./node_modules/.bin/react-scripts start",
-    "start": "DISABLE_ESLINT_PLUGIN=true PORT=5174 BROWSER=none ./node_modules/.bin/react-scripts start",
-    "build": "./node_modules/.bin/react-scripts build",
-    "test": "./node_modules/.bin/react-scripts test",
-    "eject": "./node_modules/.bin/react-scripts eject"
+    "dev": "DISABLE_ESLINT_PLUGIN=true PORT=5174 BROWSER=none npx react-scripts start",
+    "start": "DISABLE_ESLINT_PLUGIN=true PORT=5174 BROWSER=none npx react-scripts start",
+    "build": "npx react-scripts build",
+    "test": "npx react-scripts test",
+    "eject": "npx react-scripts eject"
   },
   "eslintConfig": {
     "extends": [

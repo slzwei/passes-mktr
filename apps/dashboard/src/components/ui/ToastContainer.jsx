@@ -2,7 +2,7 @@
 // Container component for managing multiple toast notifications
 
 import React from 'react';
-import Toast from './Toast.jsx';
+import Toast from './toast.jsx';
 
 export const ToastContainer = ({ toasts, onRemoveToast }) => {
   if (toasts.length === 0) return null;
