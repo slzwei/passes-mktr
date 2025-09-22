@@ -82,8 +82,8 @@ class PassSigner {
         signature
       );
 
-      // Create .pkpass file
-      const pkpassPath = await this.createPkpassFile(tempDir, passId);
+      // Create .pkpass buffer (in-memory)
+      const pkpassBuffer = await this.createPkpassBuffer(tempDir);
 
       // Cleanup temp directory
       await fs.promises.rmdir(tempDir, { recursive: true });
@@ -91,10 +91,11 @@ class PassSigner {
       logger.logPassOperation('pass_generated', {
         passId,
         serialNumber: passJson.serialNumber,
-        campaignId: passData.campaignId
+        campaignId: passData.campaignId,
+        bufferSize: pkpassBuffer.length
       });
 
-      return pkpassPath;
+      return pkpassBuffer;
     } catch (error) {
       logger.error('Pass generation failed:', error);
       throw error;
@@ -122,18 +123,40 @@ class PassSigner {
     // Get field configuration (use custom config if provided, otherwise use default loyalty card config)
     const fieldConfig = customConfig || this.configService.getLoyaltyCardConfig(passData);
     
+    // Interpolate field values with pass data if using default loyalty card config
+    const interpolatedFieldConfig = customConfig ? 
+      this.configService.generatePreviewConfig(fieldConfig, passData) : 
+      this.configService.generatePreviewConfig(fieldConfig, passData);
+    
+    // Ensure interpolatedFieldConfig has the proper structure
+    if (!interpolatedFieldConfig || !interpolatedFieldConfig.fields) {
+      logger.error('Invalid field configuration generated', { interpolatedFieldConfig, fieldConfig, customConfig });
+      throw new Error('Failed to generate valid field configuration for pass');
+    }
+    
     // Debug logging for field configuration
     logger.info('Field configuration:', {
       hasCustomConfig: !!customConfig,
-      fieldConfig: fieldConfig ? {
-        header: fieldConfig.fields?.header?.length || 0,
-        secondary: fieldConfig.fields?.secondary?.length || 0,
-        auxiliary: fieldConfig.fields?.auxiliary?.length || 0
+      fieldConfig: interpolatedFieldConfig ? {
+        header: interpolatedFieldConfig.fields?.header?.length || 0,
+        secondary: interpolatedFieldConfig.fields?.secondary?.length || 0,
+        auxiliary: interpolatedFieldConfig.fields?.auxiliary?.length || 0
       } : null
     });
     
+    // Additional debugging for preview generation
+    logger.info('Interpolated field config structure:', {
+      hasFields: !!interpolatedFieldConfig?.fields,
+      fieldTypes: interpolatedFieldConfig?.fields ? Object.keys(interpolatedFieldConfig.fields) : 'none',
+      headerFields: interpolatedFieldConfig?.fields?.header,
+      primaryFields: interpolatedFieldConfig?.fields?.primary,
+      secondaryFields: interpolatedFieldConfig?.fields?.secondary,
+      auxiliaryFields: interpolatedFieldConfig?.fields?.auxiliary,
+      backFields: interpolatedFieldConfig?.fields?.back
+    });
+    
     // Merge colors with field config colors
-    const finalColors = { ...fieldConfig.colors, ...colors };
+    const finalColors = { ...interpolatedFieldConfig.colors, ...colors };
 
     // Determine if logo text should be hidden based on processed images
     const shouldHideLogoText = processedImages && processedImages.hideLogoText;
@@ -161,11 +184,11 @@ class PassSigner {
       ...(passData.hasExpiryDate && passData.expirationDate ? { expirationDate: new Date(passData.expirationDate).toISOString() } : {}),
       ...(passData.suppressStripShine !== undefined ? { suppressStripShine: passData.suppressStripShine } : { suppressStripShine: true }),
       storeCard: {
-        headerFields: fieldConfig.fields.header,
-        primaryFields: fieldConfig.fields.primary,
-        secondaryFields: fieldConfig.fields.secondary,
-        auxiliaryFields: fieldConfig.fields.auxiliary,
-        backFields: fieldConfig.fields.back
+        headerFields: interpolatedFieldConfig.fields?.header || [],
+        primaryFields: interpolatedFieldConfig.fields?.primary || [],
+        secondaryFields: interpolatedFieldConfig.fields?.secondary || [],
+        auxiliaryFields: interpolatedFieldConfig.fields?.auxiliary || [],
+        backFields: interpolatedFieldConfig.fields?.back || []
       },
       barcode: {
         message: `PASS_ID:${uuidv4()}:CAMPAIGN_ID:${campaignId}:PARTNER_ID:${partnerId || 'default'}`,
@@ -263,9 +286,9 @@ class PassSigner {
   }
 
   /**
-   * Create .pkpass ZIP file
+   * Create .pkpass ZIP file buffer (in-memory, not saved to disk)
    */
-  async createPkpassFile(tempDir, passId) {
+  async createPkpassBuffer(tempDir) {
     const AdmZip = require('adm-zip');
     const zip = new AdmZip();
     
@@ -277,13 +300,8 @@ class PassSigner {
       zip.addFile(file, content);
     }
 
-    // Save as .pkpass file
-    const outputPath = path.join(process.cwd(), 'storage', 'passes', `${passId}.pkpass`);
-    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
-    
-    zip.writeZip(outputPath);
-    
-    return outputPath;
+    // Return buffer instead of saving to disk
+    return zip.toBuffer();
   }
 
   /**

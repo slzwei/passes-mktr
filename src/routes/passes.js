@@ -110,8 +110,8 @@ router.post('/generate', [
     // Validate pass data
     passSigner.validatePassData(passData);
 
-    // Generate pass
-    const pkpassPath = await passSigner.generatePass(passData);
+    // Generate pass (returns buffer, not file path)
+    const pkpassBuffer = await passSigner.generatePass(passData);
 
     // Save pass record to database (or skip if database not available)
     let pass;
@@ -144,15 +144,12 @@ router.post('/generate', [
       customerEmail
     });
 
-    res.json({
-      success: true,
-      pass: {
-        id: pass.id,
-        serialNumber: pass.serial_number,
-        downloadUrl: `/api/passes/${pass.id}/download`,
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
-      }
-    });
+    // Send pass directly as download (no need to store)
+    const safeName = (passData.campaignName || 'pass').toString().replace(/\s+/g, '_');
+    
+    res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_pass.pkpass"`);
+    res.send(pkpassBuffer);
 
   } catch (error) {
     logger.error('Pass generation failed:', error);
@@ -365,7 +362,9 @@ router.post('/generate-working', async (req, res) => {
       expirationDate,
       hasExpiryDate = false,
       removePlaceholderLogo = false,
-      fieldConfig = null
+      fieldConfig = null,
+      // Campaign details for back of pass
+      campaignDetails = {}
     } = req.body;
 
     // Use the working PassSigner directly (like in your generator scripts)
@@ -390,10 +389,18 @@ router.post('/generate-working', async (req, res) => {
       },
       images: images || {}, // Use images from editor
       qrAltText: qrAltText,
-      fieldConfig: fieldConfig
+      fieldConfig: fieldConfig,
+      // Include campaign details for back fields
+      ...campaignDetails
     };
 
-    logger.info('Generating pass using working generator approach', { passData });
+    logger.info('Generating pass using working generator approach', { 
+      campaignId: passData.campaignId,
+      hasFieldConfig: !!fieldConfig,
+      fieldConfigKeys: fieldConfig ? Object.keys(fieldConfig) : [],
+      campaignDetailsKeys: Object.keys(campaignDetails),
+      passDataKeys: Object.keys(passData)
+    });
 
     // Map stripImage (from live preview) to "strip" and pass via passData.images
     const imagesPayload = (() => {
@@ -407,20 +414,20 @@ router.post('/generate-working', async (req, res) => {
     // Ensure images are included in passData for PassSigner
     passData.images = imagesPayload;
 
-    // Generate the pass using the provided images/colors
-    const pkpassPath = await passSigner.generatePass(passData);
+    // Generate the pass using the provided images/colors (returns buffer)
+    const pkpassBuffer = await passSigner.generatePass(passData);
 
-    // Read the generated file and send it
-    const passBuffer = await fs.readFile(pkpassPath);
+    // Send the buffer directly (no file storage needed)
+    const safeName = (campaignName || 'pass').toString().replace(/\s+/g, '_');
     
     res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
-    res.setHeader('Content-Disposition', `attachment; filename="${campaignName.replace(/\s+/g, '_')}_pass.pkpass"`);
-    res.send(passBuffer);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_pass.pkpass"`);
+    res.send(pkpassBuffer);
 
     logger.info('Pass generated successfully using working approach', {
       campaignId: passData.campaignId,
       serialNumber: passData.serialNumber,
-      fileSize: passBuffer.length
+      bufferSize: pkpassBuffer.length
     });
 
   } catch (error) {

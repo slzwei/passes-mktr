@@ -137,8 +137,8 @@ class SimpleStorageService {
       throw new Error(`Campaign ${campaignId} not found`);
     }
     
-    // Merge details data into campaign
-    Object.assign(campaign, detailsData);
+    // Save details data as nested campaignDetails object
+    campaign.campaignDetails = detailsData;
     campaign.updatedAt = new Date().toISOString();
     
     await this.saveCampaign(campaign);

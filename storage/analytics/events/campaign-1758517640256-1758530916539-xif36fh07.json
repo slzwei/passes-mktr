@@ -1,0 +1,12 @@
+{
+  "id": "campaign-1758517640256-1758530916539-xif36fh07",
+  "campaignId": "campaign-1758517640256",
+  "event": "form_complete",
+  "timestamp": "2025-09-22T08:48:36.533Z",
+  "formData": {
+    "name": "dfs",
+    "phone": "93838",
+    "email": null
+  },
+  "receivedAt": "2025-09-22T08:48:36.539Z"
+}

@@ -7,13 +7,20 @@ import { createPageUrl } from '@/utils';
 import campaignsService from '@/services/campaignsService';
 import campaignService from '@/services/campaignService';
 
+console.log('🚀 Services imported:', { campaignsService, campaignService });
+
+console.log('🚀 RedemptionEditor component loaded!');
+
 const RedemptionEditor = () => {
+  console.log('🚀 RedemptionEditor function called!');
   const navigate = useNavigate();
   const { campaignId } = useParams();
+  console.log('🚀 RedemptionEditor campaignId:', campaignId);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isNextStepLoading, setIsNextStepLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [campaign, setCampaign] = useState(null);
   const [designData, setDesignData] = useState(null);
@@ -81,6 +88,47 @@ const RedemptionEditor = () => {
     return () => window.removeEventListener('message', handleMessage);
   }, [campaignId]);
 
+  // Test Next Step button functionality
+  useEffect(() => {
+    console.log('🔍 useEffect triggered - isLoading:', isLoading, 'campaignId:', campaignId);
+    if (!isLoading && campaignId) {
+      // Add a test button click after a delay to verify functionality
+      setTimeout(() => {
+        console.log('🔍 Looking for Next Step button in DOM...');
+        const nextStepButton = document.getElementById('next-step-button');
+        console.log('🔍 Next Step button element:', nextStepButton);
+        
+        // Also check for all buttons
+        const allButtons = document.querySelectorAll('button');
+        console.log('🔍 All buttons found:', allButtons.length);
+        allButtons.forEach((btn, index) => {
+          console.log(`🔍 Button ${index}:`, btn.textContent, btn.className);
+        });
+        
+        if (nextStepButton) {
+          console.log('✅ Next Step button found in DOM');
+          // Test if the button is clickable
+          console.log('🔍 Button disabled state:', nextStepButton.disabled);
+          console.log('🔍 Button className:', nextStepButton.className);
+          
+          // Test clicking the button programmatically
+          console.log('🧪 Testing programmatic button click...');
+          try {
+            nextStepButton.click();
+            console.log('✅ Programmatic button click executed');
+          } catch (error) {
+            console.error('❌ Programmatic button click failed:', error);
+          }
+        } else {
+          console.warn('⚠️ Next Step button not found in DOM');
+          console.log('🔍 Available elements with IDs:', Array.from(document.querySelectorAll('[id]')).map(el => el.id));
+        }
+      }, 2000);
+    } else {
+      console.log('🔍 Not searching for button yet - isLoading:', isLoading, 'campaignId:', campaignId);
+    }
+  }, [isLoading, campaignId]);
+
   const handleIframeLoad = () => {
     setIsLoading(false);
     setHasError(false);
@@ -95,6 +143,80 @@ const RedemptionEditor = () => {
     setRetryCount(prev => prev + 1);
     setIsLoading(true);
     setHasError(false);
+  };
+
+  const generateAndSavePreview = async () => {
+    try {
+      console.log('🔄 Generating preview for campaign:', campaignId);
+      
+      // Get the current design data
+      const currentDesign = designData?.design || {};
+      
+      // Request a snapshot from the editor iframe
+      const iframe = document.querySelector('iframe[title="Redemption Card Editor"]');
+      console.log('🔍 Looking for iframe...', iframe);
+      if (iframe && iframe.contentWindow) {
+        console.log('📱 Found editor iframe, requesting snapshot...');
+        console.log('📱 Iframe contentWindow:', iframe.contentWindow);
+        
+        const snapshot = await new Promise((resolve) => {
+          const handler = (event) => {
+            console.log('📨 Received message from iframe:', event.data);
+            if (!event.data || typeof event.data !== 'object') return;
+            if (event.data.type === 'SNAPSHOT_READY') {
+              window.removeEventListener('message', handler);
+              console.log('✅ Snapshot received from iframe');
+              resolve(event.data.image);
+            } else if (event.data.type === 'SNAPSHOT_ERROR') {
+              window.removeEventListener('message', handler);
+              console.warn('❌ Snapshot error from iframe');
+              resolve(null);
+            }
+          };
+          window.addEventListener('message', handler);
+          console.log('📤 Sending REQUEST_SNAPSHOT to iframe...');
+          iframe.contentWindow.postMessage({ type: 'REQUEST_SNAPSHOT' }, '*');
+          setTimeout(() => { 
+            window.removeEventListener('message', handler); 
+            console.warn('⏰ Snapshot request timeout');
+            resolve(null); 
+          }, 5000); // Increased timeout to 5 seconds
+        });
+
+        if (snapshot) {
+          console.log('📸 Snapshot captured, uploading to server...');
+          
+          // Upload the preview to the server
+          const response = await fetch(`/api/campaigns/${campaignId}/preview`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              previewData: snapshot
+            })
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ Preview saved successfully:', result);
+            return result;
+          } else {
+            console.error('❌ Failed to save preview:', response.status, response.statusText);
+            throw new Error(`Failed to save preview: ${response.status} ${response.statusText}`);
+          }
+        } else {
+          console.warn('⚠️ No snapshot captured from editor');
+          throw new Error('No snapshot captured from editor');
+        }
+      } else {
+        console.warn('⚠️ Editor iframe not found');
+        throw new Error('Editor iframe not found');
+      }
+    } catch (error) {
+      console.error('❌ Failed to generate preview:', error);
+      throw error;
+    }
   };
 
   const handleSaveDraft = async () => {
@@ -138,10 +260,16 @@ const RedemptionEditor = () => {
       return;
     }
 
-    // New campaign workflow - force save any pending changes
+    // New campaign workflow - save design and generate preview
     try {
       setIsSavingDraft(true);
+      
+      // First, flush any pending design changes
       await campaignService.flushPendingChanges(campaignId);
+      
+      // Then generate and save preview PNG
+      await generateAndSavePreview();
+      
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
     } catch (error) {
@@ -159,21 +287,107 @@ const RedemptionEditor = () => {
       return;
     }
 
+    setIsNextStepLoading(true);
     try {
-      // Flush any pending changes before navigation
-      await campaignService.flushPendingChanges(campaignId);
-      navigate(`/campaigns/${campaignId}/details`);
-    } catch (error) {
-      console.error('Failed to save changes before navigation:', error);
-      // Navigate anyway but warn user
-      if (confirm('There was an issue saving your changes. Continue anyway?')) {
-        navigate(`/campaigns/${campaignId}/details`);
+      console.log('🚀 Starting Next Step process for campaign:', campaignId);
+      
+      // Step 1: Flush any pending changes before navigation
+      console.log('💾 Step 1: Flushing pending changes...');
+      try {
+        await campaignService.flushPendingChanges(campaignId);
+        console.log('✅ Step 1: Pending changes flushed successfully');
+      } catch (error) {
+        console.error('❌ Step 1 failed:', error);
+        throw error;
       }
+      
+      // Step 2: Try to generate and save preview PNG
+      console.log('📸 Step 2: Generating and saving preview...');
+      try {
+        await generateAndSavePreview();
+        console.log('✅ Step 2: Preview generated and saved successfully');
+      } catch (error) {
+        console.error('❌ Step 2 failed (preview generation):', error);
+        // Try a fallback: save a simple placeholder preview
+        console.log('🔄 Trying fallback preview generation...');
+        try {
+          const fallbackResponse = await fetch(`/api/campaigns/${campaignId}/preview`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              previewData: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+            })
+          });
+          if (fallbackResponse.ok) {
+            console.log('✅ Fallback preview saved successfully');
+          } else {
+            console.log('⚠️ Fallback preview also failed, continuing...');
+          }
+        } catch (fallbackError) {
+          console.log('⚠️ Fallback preview failed:', fallbackError);
+        }
+        // Don't throw error here, continue with navigation
+        console.log('⚠️ Continuing without preview generation...');
+      }
+      
+      // Step 3: Try to capture snapshots for details page
+      console.log('🖼️ Step 3: Capturing snapshots for details page...');
+      try {
+        const iframe = document.querySelector('iframe[title="Redemption Card Editor"]');
+        if (iframe && iframe.contentWindow) {
+          const capture = async (type) => new Promise((resolve) => {
+            const handler = (event) => {
+              if (!event.data || typeof event.data !== 'object') return;
+              if (event.data.type === `${type}_READY`) {
+                window.removeEventListener('message', handler);
+                try { sessionStorage.setItem(`campaign:${campaignId}:${type === 'STRIP' ? 'stripImage' : 'snapshot'}`, event.data.image); } catch {}
+                console.log(`✅ ${type} captured and stored in sessionStorage`);
+                resolve(true);
+              } else if (event.data.type === `${type}_ERROR`) {
+                window.removeEventListener('message', handler);
+                console.warn(`⚠️ ${type} capture failed`);
+                resolve(false);
+              }
+            };
+            window.addEventListener('message', handler);
+            iframe.contentWindow.postMessage({ type: `REQUEST_${type}` }, '*');
+            setTimeout(() => { 
+              window.removeEventListener('message', handler); 
+              console.warn(`⏰ ${type} capture timeout`);
+              resolve(false); 
+            }, 2000);
+          });
+          await capture('SNAPSHOT');
+          await capture('STRIP');
+          console.log('✅ Step 3: Snapshots captured successfully');
+        } else {
+          console.warn('⚠️ Step 3: Editor iframe not found, skipping snapshot capture');
+        }
+      } catch (error) {
+        console.warn('⚠️ Step 3 failed (snapshot capture):', error);
+        // Don't throw error here, continue with navigation
+      }
+      
+      // Step 4: Navigate to details page
+      console.log('🧭 Step 4: Navigating to details page...');
+      navigate(`/campaigns/${campaignId}/details`);
+      
+    } catch (error) {
+      console.error('❌ Critical error in Next Step process:', error);
+      // Show user-friendly error message
+      alert(`Failed to save changes before navigation: ${error.message}. Click OK to continue anyway.`);
+      navigate(`/campaigns/${campaignId}/details`);
+    } finally {
+      setIsNextStepLoading(false);
     }
   };
 
   const handleNextStep = () => {
+    console.log('🔘 Next Step button clicked!');
     if (campaignId) {
+      console.log('📋 Campaign ID found, calling handleContinueToDetails...');
       handleContinueToDetails();
     } else {
       // Legacy behavior
@@ -194,6 +408,13 @@ const RedemptionEditor = () => {
     setHasError(false);
   }, [editorUrl]);
 
+  console.log('🔍 RedemptionEditor rendering - isLoading:', isLoading, 'hasError:', hasError, 'campaignId:', campaignId);
+  
+  // Simple test to see if component is rendering
+  if (campaignId === 'campaign-1758536445764') {
+    console.log('🎯 TEST: Component is rendering for the correct campaign!');
+  }
+  
   return (
     <div className="h-full flex flex-col" style={{ height: 'calc(100vh - 80px)' }}>
       {/* Header with back button and action buttons */}
@@ -235,11 +456,26 @@ const RedemptionEditor = () => {
 
           {/* Next Step Button */}
           <Button
-            onClick={handleNextStep}
+            onClick={(e) => {
+              console.log('🔘 Next Step button clicked via onClick handler!', e);
+              handleNextStep();
+            }}
+            disabled={isNextStepLoading}
             className="bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2"
+            id="next-step-button"
+            style={{ zIndex: 20 }}
           >
-            <ArrowRight className="h-4 w-4" />
-            Next Step
+            {isNextStepLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <ArrowRight className="h-4 w-4" />
+                Next Step
+              </>
+            )}
           </Button>
         </div>
       </div>

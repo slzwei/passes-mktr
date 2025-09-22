@@ -25,6 +25,7 @@ const performanceMonitor = require('./services/performanceMonitor');
 const tenantRoutes = require('./routes/tenants');
 const campaignRoutes = require('./routes/campaigns');
 const passRoutes = require('./routes/passes');
+const passkitRoutes = require('./routes/passkit'); // Apple PassKit Web Service API
 const partnerRoutes = require('./routes/partners');
 const redemptionRoutes = require('./routes/redemptions');
 const editorRoutes = require('./routes/editor');
@@ -139,6 +140,9 @@ app.use('/api/templates', templateRoutes);
 app.use('/api/collaboration', collaborationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/stamp-updates', stampUpdateRoutes);
+
+// Apple PassKit Web Service API (must be served over HTTPS in production)
+app.use('/', passkitRoutes);
 
 // Static files for pass assets
 app.use('/assets', express.static('storage/assets'));

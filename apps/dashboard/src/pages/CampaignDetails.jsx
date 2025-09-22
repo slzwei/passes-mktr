@@ -239,40 +239,29 @@ By participating in this program, customers agree to these terms and conditions.
     setIsSaving(true);
     try {
       if (campaignId) {
-        // New campaign workflow - update the existing campaign
-        const response = await fetch(`/api/campaigns/${campaignId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: formData.campaignName,
-            description: formData.description,
-            campaignDetails: {
-              startDate: formData.startDate,
-              endDate: formData.endDate,
-              goals: formData.goals,
-              location: formData.location,
-              contactEmail: formData.contactEmail,
-              contactPhone: formData.contactPhone,
-              contactWebsite: formData.contactWebsite,
-              storeLocatorLink: formData.storeLocatorLink,
-              rewardBreakdown: formData.rewardBreakdown,
-              termsAndConditions: formData.termsAndConditions
-            }
-          })
+        // New campaign workflow - use campaignService to update campaign and clear cache
+        const updatedCampaign = await campaignService.updateCampaign(campaignId, {
+          name: formData.campaignName,
+          description: formData.description,
+          campaignDetails: {
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            goals: formData.goals,
+            location: formData.location,
+            contactEmail: formData.contactEmail,
+            contactPhone: formData.contactPhone,
+            contactWebsite: formData.contactWebsite,
+            storeLocatorLink: formData.storeLocatorLink,
+            rewardBreakdown: formData.rewardBreakdown,
+            termsAndConditions: formData.termsAndConditions
+          }
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to save campaign');
-        }
-
-        console.log('Campaign draft saved:', { campaignId, formData });
+        console.log('Campaign draft saved:', { campaignId, formData, updatedCampaign });
+        
+        // Update local campaign state to reflect saved changes
+        setCampaign(updatedCampaign);
+        
         alert('Campaign draft saved successfully!');
       } else {
         // Legacy behavior for non-campaign workflow
@@ -288,9 +277,41 @@ By participating in this program, customers agree to these terms and conditions.
   };
 
   const handleNextStep = async () => {
-    // Navigate to landing page editor
     if (campaignId) {
-      navigate(`/campaigns/${campaignId}/landing`);
+      // Save campaign details before navigating
+      setIsSaving(true);
+      try {
+        // Use campaignService to update campaign and clear cache
+        const updatedCampaign = await campaignService.updateCampaign(campaignId, {
+          name: formData.campaignName,
+          description: formData.description,
+          campaignDetails: {
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            goals: formData.goals,
+            location: formData.location,
+            contactEmail: formData.contactEmail,
+            contactPhone: formData.contactPhone,
+            contactWebsite: formData.contactWebsite,
+            storeLocatorLink: formData.storeLocatorLink,
+            rewardBreakdown: formData.rewardBreakdown,
+            termsAndConditions: formData.termsAndConditions
+          }
+        });
+
+        console.log('Campaign details saved before navigation:', { campaignId, formData, updatedCampaign });
+        
+        // Update local campaign state to reflect saved changes
+        setCampaign(updatedCampaign);
+        
+        // Navigate to landing page editor after successful save
+        navigate(`/campaigns/${campaignId}/landing`);
+      } catch (error) {
+        console.error('Failed to save campaign details:', error);
+        alert('Failed to save campaign details. Please try again.');
+      } finally {
+        setIsSaving(false);
+      }
     } else {
       // Fallback for legacy workflow
       navigate('/campaigndetails');
@@ -776,8 +797,17 @@ By participating in this program, customers agree to these terms and conditions.
                   onClick={handleSaveDraft}
                   disabled={isSaving}
                 >
-                  <Save className="h-4 w-4 mr-2" />
-                  {isSaving ? 'Saving...' : 'Save Draft'}
+                  {isSaving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Draft
+                    </>
+                  )}
                 </Button>
                 
                 <Button
@@ -798,10 +828,19 @@ By participating in this program, customers agree to these terms and conditions.
                 <Button
                   className="w-full bg-purple-600 hover:bg-purple-700"
                   onClick={handleNextStep}
-                  disabled={!isFormValid || !isRewardSectionComplete || !isContactSectionComplete}
+                  disabled={!isFormValid || !isRewardSectionComplete || !isContactSectionComplete || isSaving}
                 >
-                  <ArrowRight className="h-4 w-4 mr-2" />
-                  Next Step
+                  {isSaving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRight className="h-4 w-4 mr-2" />
+                      Next Step
+                    </>
+                  )}
                 </Button>
                 
                 <Button
