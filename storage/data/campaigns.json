@@ -1,6 +1,6 @@
 [
   {
-    "id": "campaign-1758536878580",
+    "id": "campaign-1758538428683",
     "tenantId": "tenant-1",
     "name": "New Campaign",
     "description": "A new digital wallet campaign",
@@ -11,7 +11,7 @@
     },
     "design": {
       "cardType": "redemption",
-      "backgroundColor": "#f410c2",
+      "backgroundColor": "#f75f5f",
       "foregroundColor": "#FFFFFF",
       "labelColor": "#FFFFFF",
       "stripBackgroundColor": "#F5F5F5",
@@ -35,7 +35,7 @@
         "value": "Free coffee at 10 stamps"
       },
       "stampsEarned": 4,
-      "totalStamps": 7,
+      "totalStamps": 20,
       "numberOfMilestones": 2,
       "milestonePositions": [
         5,
@@ -105,8 +105,8 @@
     },
     "isActive": false,
     "status": "draft",
-    "createdAt": "2025-09-22T10:27:58.580Z",
-    "updatedAt": "2025-09-22T10:28:40.703Z",
+    "createdAt": "2025-09-22T10:53:48.684Z",
+    "updatedAt": "2025-09-22T10:54:07.824Z",
     "campaignDetails": {
       "name": "New Campaign",
       "description": "A new digital wallet campaign",

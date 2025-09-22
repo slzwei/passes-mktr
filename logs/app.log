@@ -24672,3 +24672,31 @@
 {"count":1,"level":"info","message":"Fetching campaigns list","service":"passes-mktr","tenantId":"tenant-1","timestamp":"2025-09-22 18:28:42","version":"1.0.0"}
 {"level":"info","message":"127.0.0.1 - - [22/Sep/2025:10:28:42 +0000] \"GET /api/campaigns?tenantId=tenant-1 HTTP/1.1\" 200 - \"-\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36\"","service":"passes-mktr","timestamp":"2025-09-22 18:28:42","version":"1.0.0"}
 {"level":"info","message":"127.0.0.1 - - [22/Sep/2025:10:28:42 +0000] \"GET /storage/previews/campaign-1758536878580.png?t=2025-09-22T10:28:40.703Z&v=1758536922016 HTTP/1.1\" 200 93658 \"-\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36\"","service":"passes-mktr","timestamp":"2025-09-22 18:28:42","version":"1.0.0"}
+{"level":"info","message":"Rate limiting disabled in development","service":"passes-mktr","timestamp":"2025-09-22 21:08:04","version":"1.0.0"}
+{"level":"info","message":"Created directory: storage/passes","service":"passes-mktr","timestamp":"2025-09-22 21:08:04","version":"1.0.0"}
+{"level":"info","message":"📦 Initializing enhanced services...","service":"passes-mktr","timestamp":"2025-09-22 21:08:04","version":"1.0.0"}
+{"level":"info","message":"Redis disabled for development - using memory cache only","service":"passes-mktr","timestamp":"2025-09-22 21:08:04","version":"1.0.0"}
+{"level":"info","message":"✅ Multi-level cache manager initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:04","version":"1.0.0"}
+{"level":"info","message":"✅ Image optimizer initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:04","version":"1.0.0"}
+{"level":"info","message":"✅ Performance monitor initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:04","version":"1.0.0"}
+{"level":"info","message":"✅ Database connection established","service":"passes-mktr","timestamp":"2025-09-22 21:08:04","version":"1.0.0"}
+{"level":"info","message":"Rate limiting disabled in development","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"📦 Initializing enhanced services...","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"Redis disabled for development - using memory cache only","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"✅ Multi-level cache manager initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"✅ Image optimizer initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"✅ Performance monitor initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"✅ Database connection established","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"Database connected successfully","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"warn","message":"Redis connection disabled for development","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"✅ Enhanced WebSocket service initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"✅ UX AutoSave service initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"✅ All services initialized","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"🌟 MKTR Passes API server running on 0.0.0.0:3000","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"🌍 Environment: development","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"💊 Health check: http://0.0.0.0:3000/health","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"🔌 WebSocket enabled for real-time updates","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"📊 Performance monitoring active","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"⚡ Enhanced caching enabled","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"level":"info","message":"🖼️ Image optimization ready","service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0"}
+{"cache":{"initialized":true,"maxMemorySize":1000,"memorySize":0,"redisConnected":false},"imageOptimizer":{"features":{"batchProcessing":true,"responsiveImages":true,"thumbnails":true,"validation":true},"initialized":true,"supportedFormats":["webp","jpeg","png"],"tempDir":"/Users/shawnlee/Documents/passes-mktr/passes-mktr/temp/image-optimization"},"level":"info","message":"📈 Service statistics:","performance":{"activeAlerts":0,"initialized":true,"metricTypes":0,"thresholds":{"apiCallDuration":1000,"cacheHitRatio":0.8,"databaseQueryDuration":500,"errorRate":0.05,"memoryUsage":0.85},"totalMetrics":0},"service":"passes-mktr","timestamp":"2025-09-22 21:08:43","version":"1.0.0","websocket":{"activeCampaigns":0,"connectedUsers":0,"pendingSaveIndicators":0,"totalRoomConnections":0}}
