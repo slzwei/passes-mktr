@@ -13,6 +13,8 @@ import Analytics from "./Analytics";
 
 import CreateCampaign from "./CreateCampaign";
 import CampaignDetails from "./CampaignDetails";
+import LandingPageEditor from "./LandingPageEditor";
+import MobileLandingPage from "./MobileLandingPage";
 
 import RedemptionEditor from "./RedemptionEditor";
 import MilestoneEditor from "./MilestoneEditor";
@@ -62,37 +64,46 @@ function PagesContent() {
     const currentPage = _getCurrentPage(location.pathname);
     
     return (
-        <Layout currentPageName={currentPage}>
-            <Routes>            
-                
-                    <Route path="/" element={<Dashboard />} />
-                
-                
-                <Route path="/Dashboard" element={<Dashboard />} />
-                
-                <Route path="/Partners" element={<Partners />} />
-                <Route path="/Partners/:id" element={<PartnerDetails />} />
-                
-                <Route path="/Passholders" element={<Passholders />} />
-                
-                <Route path="/Campaigns" element={<Campaigns />} />
-                
-                <Route path="/createcampaign" element={<CreateCampaign />} />
-                <Route path="/campaigndetails" element={<CampaignDetails />} />
-                
-                {/* New campaign workflow routes */}
-                <Route path="/campaigns/:campaignId/design" element={<RedemptionEditor />} />
-                <Route path="/campaigns/:campaignId/details" element={<CampaignDetails />} />
-                
-                <Route path="/Analytics" element={<Analytics />} />
-                
-                {/* Legacy editor routes */}
-                <Route path="/editor/redemption" element={<RedemptionEditor />} />
-                <Route path="/editor/milestone" element={<MilestoneEditor />} />
-                <Route path="/editor/points" element={<PointsEditor />} />
-                
-            </Routes>
-        </Layout>
+        <Routes>
+            {/* Standalone mobile landing page - NO layout wrapper */}
+            <Route path="/campaigns/:campaignId/mobile" element={<MobileLandingPage />} />
+            
+            {/* All other routes with dashboard layout */}
+            <Route path="/*" element={
+                <Layout currentPageName={currentPage}>
+                    <Routes>            
+                        
+                            <Route path="/" element={<Dashboard />} />
+                        
+                        
+                        <Route path="/Dashboard" element={<Dashboard />} />
+                        
+                        <Route path="/Partners" element={<Partners />} />
+                        <Route path="/Partners/:id" element={<PartnerDetails />} />
+                        
+                        <Route path="/Passholders" element={<Passholders />} />
+                        
+                        <Route path="/Campaigns" element={<Campaigns />} />
+                        
+                        <Route path="/createcampaign" element={<CreateCampaign />} />
+                        <Route path="/campaigndetails" element={<CampaignDetails />} />
+
+                        {/* New campaign workflow routes */}
+                        <Route path="/campaigns/:campaignId/design" element={<RedemptionEditor />} />
+                        <Route path="/campaigns/:campaignId/details" element={<CampaignDetails />} />
+                        <Route path="/campaigns/:campaignId/landing" element={<LandingPageEditor />} />
+                        
+                        <Route path="/Analytics" element={<Analytics />} />
+                        
+                        {/* Legacy editor routes */}
+                        <Route path="/editor/redemption" element={<RedemptionEditor />} />
+                        <Route path="/editor/milestone" element={<MilestoneEditor />} />
+                        <Route path="/editor/points" element={<PointsEditor />} />
+                        
+                    </Routes>
+                </Layout>
+            } />
+        </Routes>
     );
 }
 

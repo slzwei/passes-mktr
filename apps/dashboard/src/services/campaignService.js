@@ -198,6 +198,41 @@ class CampaignService {
   }
 
   /**
+   * Update campaign (generic method)
+   */
+  async updateCampaign(campaignId, updates) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update campaign');
+      }
+
+      // Clear cache after successful update
+      const key = `campaign:${campaignId}`;
+      this.cache.delete(key);
+      this.inflight.delete(key);
+
+      return result.data;
+    } catch (error) {
+      console.error('Failed to update campaign:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Upload image and return URL
    */
   async uploadImage(file, campaignId, imageType) {
@@ -225,6 +260,36 @@ class CampaignService {
       return result.data.url;
     } catch (error) {
       console.error('Failed to upload image:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Track analytics events for a campaign
+   */
+  async trackAnalytics(campaignId, eventData) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}/analytics`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(eventData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to track analytics');
+      }
+
+      return result.data;
+    } catch (error) {
+      console.error('Failed to track analytics:', error);
       throw error;
     }
   }

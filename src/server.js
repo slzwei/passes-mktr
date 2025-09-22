@@ -15,6 +15,12 @@ const { connectDatabase } = require('./config/database');
 const { connectRedis } = require('./config/redis');
 const WebSocketService = require('./services/websocketService');
 
+// Enhanced services
+const cacheManager = require('./services/cacheManager');
+const uxAutoSaveService = require('./services/uxAutoSaveService');
+const imageOptimizer = require('./services/imageOptimizer');
+const performanceMonitor = require('./services/performanceMonitor');
+
 // Import routes
 const tenantRoutes = require('./routes/tenants');
 const campaignRoutes = require('./routes/campaigns');
@@ -89,6 +95,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(compression());
 
+// Performance monitoring middleware
+app.use(performanceMonitor.createExpressMiddleware());
+
 // Logging middleware
 app.use(morgan('combined', {
   stream: {
@@ -102,13 +111,18 @@ app.use(morgan('combined', {
   }
 }));
 
-// Health check endpoint
+// Health check endpoint with enhanced metrics
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    version: process.env.npm_package_version || '1.0.0'
+    version: process.env.npm_package_version || '1.0.0',
+    services: {
+      cache: cacheManager.getStats(),
+      performance: performanceMonitor.getStats(),
+      imageOptimizer: imageOptimizer.getStats()
+    }
   });
 });
 
@@ -214,6 +228,13 @@ async function startServer() {
     // Ensure required directories exist
     ensureDirectories();
     
+    // Initialize enhanced services
+    logger.info('📦 Initializing enhanced services...');
+    
+    await cacheManager.initialize();
+    await imageOptimizer.initialize();
+    await performanceMonitor.initialize();
+
     // Copy default assets if missing
     copyDefaultIfMissing('pass-assets/strip-placeholder.png', 'storage/images/processed/default-strip-background.png');
     copyDefaultIfMissing('pass-assets/strip-placeholder.png', 'storage/images/processed/default-strip-background@2x.png');
@@ -246,16 +267,32 @@ async function startServer() {
     // Create HTTP server
     const server = http.createServer(app);
 
-    // Initialize WebSocket service
+    // Initialize WebSocket service with enhanced features
     const wsService = new WebSocketService(server);
-    logger.info('WebSocket service initialized');
+    
+    // Initialize UX auto-save service with WebSocket
+    await uxAutoSaveService.initialize(wsService);
+    
+    logger.info('✅ All services initialized');
 
     // Start HTTP server
     server.listen(PORT, HOST, () => {
-      logger.info(`MKTR Passes API server running on ${HOST}:${PORT}`);
-      logger.info(`Environment: ${process.env.NODE_ENV}`);
-      logger.info(`Health check: http://${HOST}:${PORT}/health`);
-      logger.info(`WebSocket enabled for real-time preview updates`);
+      logger.info(`🌟 MKTR Passes API server running on ${HOST}:${PORT}`);
+      logger.info(`🌍 Environment: ${process.env.NODE_ENV}`);
+      logger.info(`💊 Health check: http://${HOST}:${PORT}/health`);
+      logger.info(`🔌 WebSocket enabled for real-time updates`);
+      logger.info(`📊 Performance monitoring active`);
+      logger.info(`⚡ Enhanced caching enabled`);
+      logger.info(`🖼️ Image optimization ready`);
+      
+      // Log service stats
+      const stats = {
+        cache: cacheManager.getStats(),
+        performance: performanceMonitor.getStats(),
+        imageOptimizer: imageOptimizer.getStats(),
+        websocket: wsService.getStats()
+      };
+      logger.info('📈 Service statistics:', stats);
     });
 
   } catch (error) {
@@ -264,16 +301,30 @@ async function startServer() {
   }
 }
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  process.exit(0);
-});
+// Enhanced graceful shutdown
+const gracefulShutdown = async (signal) => {
+  logger.info(`${signal} received, shutting down gracefully...`);
+  
+  try {
+    // Force sync pending auto-saves
+    await uxAutoSaveService.close();
+    
+    // Close cache connections
+    await cacheManager.close();
+    
+    // Clean up image optimizer
+    await imageOptimizer.cleanup();
+    
+    logger.info('✅ Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    logger.error('❌ Error during shutdown:', error);
+    process.exit(1);
+  }
+};
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  process.exit(0);
-});
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Start the server
 startServer();
