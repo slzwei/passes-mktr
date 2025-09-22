@@ -1,0 +1,329 @@
+[
+  {
+    "id": "campaign-1758478773948",
+    "tenantId": "tenant-1",
+    "name": "New Campaign",
+    "description": "A new digital wallet campaign",
+    "type": "redemption",
+    "settings": {
+      "stampsRequired": 5,
+      "expiryDays": 365
+    },
+    "design": {
+      "cardType": "redemption",
+      "backgroundColor": "#000000",
+      "foregroundColor": "#FFFFFF",
+      "labelColor": "#FFFFFF",
+      "stripBackgroundColor": "#F5F5F5",
+      "logoText": "REDEMPTION",
+      "logoImage": null,
+      "logoFormat": "square",
+      "hideLogoText": false,
+      "removePlaceholderLogo": false,
+      "secondaryFields": [
+        {
+          "label": "Card Holder",
+          "value": "John Doe"
+        },
+        {
+          "label": "Redeemed",
+          "value": "4 out of 10"
+        }
+      ],
+      "auxiliaryField": {
+        "label": "Next Reward",
+        "value": "Free coffee at 10 stamps"
+      },
+      "stampsEarned": 4,
+      "totalStamps": 10,
+      "numberOfMilestones": 2,
+      "milestonePositions": [
+        5,
+        10
+      ],
+      "pointsBalance": 1250,
+      "pointsEarned": 1250,
+      "pointsRequired": 2000,
+      "pointsPerTransaction": 50,
+      "nextRewardPoints": 2000,
+      "milestoneLevels": [
+        {
+          "level": 1,
+          "name": "Bronze",
+          "pointsRequired": 500,
+          "reward": "10% off"
+        },
+        {
+          "level": 2,
+          "name": "Silver",
+          "pointsRequired": 1000,
+          "reward": "15% off"
+        },
+        {
+          "level": 3,
+          "name": "Gold",
+          "pointsRequired": 2000,
+          "reward": "20% off"
+        },
+        {
+          "level": 4,
+          "name": "Platinum",
+          "pointsRequired": 5000,
+          "reward": "Free coffee"
+        }
+      ],
+      "currentMilestone": 2,
+      "nextMilestonePoints": 2000,
+      "logoSize": 38,
+      "cardWidth": 375,
+      "cardHeight": 504,
+      "stripHeight": 144,
+      "headerHeight": 80,
+      "secondaryHeight": 100,
+      "auxiliaryHeight": 80,
+      "barcodeHeight": 100,
+      "qrAltText": "",
+      "expirationDate": "2026-09-21",
+      "hasExpiryDate": false,
+      "suppressStripShine": true,
+      "stripBackgroundImage": "/storage/images/processed/default-strip-background.png",
+      "stripBackgroundOpacity": 0.8,
+      "stampIconUnredeemed": null,
+      "stampIconRedeemed": null,
+      "stampIconMilestone": null,
+      "useSameStampIcon": true,
+      "useMilestoneOverlay": true,
+      "stampUnredeemedColor": "#e5e7eb",
+      "colors": {
+        "primary": "#007AFF",
+        "secondary": "#34C759",
+        "background": "#F2F2F7"
+      },
+      "images": {},
+      "fieldConfig": {},
+      "layout": {}
+    },
+    "isActive": false,
+    "status": "draft",
+    "createdAt": "2025-09-21T18:19:33.949Z",
+    "updatedAt": "2025-09-21T18:20:08.813Z"
+  },
+  {
+    "id": "campaign-1758511268105",
+    "tenantId": "tenant-1",
+    "name": "New Campaign",
+    "description": "A new digital wallet campaign",
+    "type": "redemption",
+    "settings": {
+      "stampsRequired": 5,
+      "expiryDays": 365
+    },
+    "design": {
+      "cardType": "redemption",
+      "backgroundColor": "#7c6da2",
+      "foregroundColor": "#FFFFFF",
+      "labelColor": "#FFFFFF",
+      "stripBackgroundColor": "#F5F5F5",
+      "logoText": "REDEMPTION",
+      "logoImage": null,
+      "logoFormat": "square",
+      "hideLogoText": false,
+      "removePlaceholderLogo": false,
+      "secondaryFields": [
+        {
+          "label": "Card Holder",
+          "value": "John Doe"
+        },
+        {
+          "label": "Redeemed",
+          "value": "4 out of 10"
+        }
+      ],
+      "auxiliaryField": {
+        "label": "Next Reward",
+        "value": "Free coffee at 10 stamps"
+      },
+      "stampsEarned": 4,
+      "totalStamps": 10,
+      "numberOfMilestones": 2,
+      "milestonePositions": [
+        5,
+        10
+      ],
+      "pointsBalance": 1250,
+      "pointsEarned": 1250,
+      "pointsRequired": 2000,
+      "pointsPerTransaction": 50,
+      "nextRewardPoints": 2000,
+      "milestoneLevels": [
+        {
+          "level": 1,
+          "name": "Bronze",
+          "pointsRequired": 500,
+          "reward": "10% off"
+        },
+        {
+          "level": 2,
+          "name": "Silver",
+          "pointsRequired": 1000,
+          "reward": "15% off"
+        },
+        {
+          "level": 3,
+          "name": "Gold",
+          "pointsRequired": 2000,
+          "reward": "20% off"
+        },
+        {
+          "level": 4,
+          "name": "Platinum",
+          "pointsRequired": 5000,
+          "reward": "Free coffee"
+        }
+      ],
+      "currentMilestone": 2,
+      "nextMilestonePoints": 2000,
+      "logoSize": 38,
+      "cardWidth": 375,
+      "cardHeight": 504,
+      "stripHeight": 144,
+      "headerHeight": 80,
+      "secondaryHeight": 100,
+      "auxiliaryHeight": 80,
+      "barcodeHeight": 100,
+      "qrAltText": "",
+      "expirationDate": "2026-09-22",
+      "hasExpiryDate": false,
+      "suppressStripShine": true,
+      "stripBackgroundImage": "/storage/images/processed/default-strip-background.png",
+      "stripBackgroundOpacity": 0.8,
+      "stampIconUnredeemed": null,
+      "stampIconRedeemed": null,
+      "stampIconMilestone": null,
+      "useSameStampIcon": true,
+      "useMilestoneOverlay": true,
+      "stampUnredeemedColor": "#e5e7eb",
+      "colors": {
+        "primary": "#007AFF",
+        "secondary": "#34C759",
+        "background": "#F2F2F7"
+      },
+      "images": {},
+      "fieldConfig": {},
+      "layout": {}
+    },
+    "isActive": false,
+    "status": "draft",
+    "createdAt": "2025-09-22T03:21:08.105Z",
+    "updatedAt": "2025-09-22T03:21:39.261Z"
+  },
+  {
+    "id": "campaign-1758511409927",
+    "tenantId": "tenant-1",
+    "name": "New Campaign",
+    "description": "A new digital wallet campaign",
+    "type": "redemption",
+    "settings": {
+      "stampsRequired": 5,
+      "expiryDays": 365
+    },
+    "design": {
+      "cardType": "redemption",
+      "backgroundColor": "#000000",
+      "foregroundColor": "#FFFFFF",
+      "labelColor": "#FFFFFF",
+      "stripBackgroundColor": "#F5F5F5",
+      "logoText": "REDEMPTION",
+      "logoImage": null,
+      "logoFormat": "square",
+      "hideLogoText": false,
+      "removePlaceholderLogo": false,
+      "secondaryFields": [
+        {
+          "label": "Card Holder",
+          "value": "John Doe"
+        },
+        {
+          "label": "Redeemed",
+          "value": "4 out of 10"
+        }
+      ],
+      "auxiliaryField": {
+        "label": "Next Reward",
+        "value": "Free coffee at 10 stamps"
+      },
+      "stampsEarned": 4,
+      "totalStamps": 10,
+      "numberOfMilestones": 2,
+      "milestonePositions": [
+        5,
+        10
+      ],
+      "pointsBalance": 1250,
+      "pointsEarned": 1250,
+      "pointsRequired": 2000,
+      "pointsPerTransaction": 50,
+      "nextRewardPoints": 2000,
+      "milestoneLevels": [
+        {
+          "level": 1,
+          "name": "Bronze",
+          "pointsRequired": 500,
+          "reward": "10% off"
+        },
+        {
+          "level": 2,
+          "name": "Silver",
+          "pointsRequired": 1000,
+          "reward": "15% off"
+        },
+        {
+          "level": 3,
+          "name": "Gold",
+          "pointsRequired": 2000,
+          "reward": "20% off"
+        },
+        {
+          "level": 4,
+          "name": "Platinum",
+          "pointsRequired": 5000,
+          "reward": "Free coffee"
+        }
+      ],
+      "currentMilestone": 2,
+      "nextMilestonePoints": 2000,
+      "logoSize": 38,
+      "cardWidth": 375,
+      "cardHeight": 504,
+      "stripHeight": 144,
+      "headerHeight": 80,
+      "secondaryHeight": 100,
+      "auxiliaryHeight": 80,
+      "barcodeHeight": 100,
+      "qrAltText": "",
+      "expirationDate": "2026-09-22",
+      "hasExpiryDate": false,
+      "suppressStripShine": true,
+      "stripBackgroundImage": "/storage/images/processed/default-strip-background.png",
+      "stripBackgroundOpacity": 0.8,
+      "stampIconUnredeemed": null,
+      "stampIconRedeemed": null,
+      "stampIconMilestone": null,
+      "useSameStampIcon": true,
+      "useMilestoneOverlay": true,
+      "stampUnredeemedColor": "#e5e7eb",
+      "colors": {
+        "primary": "#007AFF",
+        "secondary": "#34C759",
+        "background": "#F2F2F7"
+      },
+      "images": {},
+      "fieldConfig": {},
+      "layout": {}
+    },
+    "isActive": false,
+    "status": "draft",
+    "createdAt": "2025-09-22T03:23:29.927Z",
+    "updatedAt": "2025-09-22T03:34:44.893Z"
+  }
+]

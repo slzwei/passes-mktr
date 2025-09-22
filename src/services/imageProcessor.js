@@ -84,7 +84,7 @@ class ImageProcessor {
       const isStripImage = filename.includes('strip') || filename.includes('stripBackground');
       
       // Check if source image is very large and needs aggressive compression
-      const sourceStats = await fs.stat(sourcePath);
+      const sourceStats = await fs.promises.stat(sourcePath);
       const sourceSizeKB = Math.round(sourceStats.size / 1024);
       const needsAggressiveCompression = isStripImage && sourceSizeKB > 500; // > 500KB
       const needsVeryAggressiveCompression = isStripImage && sourceSizeKB > 2000; // > 2MB
@@ -104,7 +104,7 @@ class ImageProcessor {
         .toFile(outputPath);
 
       // Get file size for logging
-      const stats = await fs.stat(outputPath);
+      const stats = await fs.promises.stat(outputPath);
       const fileSizeKB = Math.round(stats.size / 1024);
       
       if (isStripImage) {

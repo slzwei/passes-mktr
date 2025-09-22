@@ -357,7 +357,7 @@ router.put('/:campaignId/design', async (req, res) => {
 router.put('/:campaignId', async (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { name, description, type, settings, isActive, campaignDetails } = req.body;
+    const { name, description, type, settings, isActive, campaignDetails, landingPageData } = req.body;
     
     // Ensure campaign exists first
     const existingCampaign = await ensureCampaignExists(campaignId);
@@ -365,6 +365,11 @@ router.put('/:campaignId', async (req, res) => {
     // Save campaign details to persistent storage if provided
     if (campaignDetails) {
       await persistenceService.saveCampaignDetails(campaignId, campaignDetails);
+    }
+    
+    // Save landing page data to persistent storage if provided
+    if (landingPageData) {
+      await persistenceService.saveLandingPageData(campaignId, landingPageData);
     }
     
     // Find campaign in mock data and update it
@@ -385,6 +390,7 @@ router.put('/:campaignId', async (req, res) => {
       ...(settings && { settings }),
       ...(isActive !== undefined && { isActive }),
       ...(campaignDetails && { campaignDetails }),
+      ...(landingPageData && { landingPageData }),
       updatedAt: new Date().toISOString()
     };
     
@@ -422,6 +428,160 @@ router.put('/:campaignId', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to update campaign'
+    });
+  }
+});
+
+// POST /api/campaigns/:campaignId/images - Upload campaign images
+router.post('/:campaignId/images', upload.single('image'), async (req, res) => {
+  try {
+    const { campaignId } = req.params;
+    const { imageType = 'general' } = req.query;
+
+    logger.info('🖼️ Received image upload request', {
+      campaignId,
+      imageType,
+      fileSize: req.file?.size,
+      fileType: req.file?.mimetype
+    });
+
+    // Ensure campaign exists first
+    const existingCampaign = await ensureCampaignExists(campaignId);
+
+    // Validate file
+    if (!req.file) {
+      logger.error('❌ Image upload failed: No file provided', { campaignId });
+      return res.status(400).json({
+        success: false,
+        error: 'No image file provided'
+      });
+    }
+
+    // Validate file type
+    if (!req.file.mimetype.startsWith('image/')) {
+      logger.error('❌ Image upload failed: Invalid file type', {
+        campaignId,
+        fileType: req.file.mimetype
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'File must be an image'
+      });
+    }
+
+    // Validate file size (5MB limit)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (req.file.size > maxSize) {
+      logger.error('❌ Image upload failed: File too large', {
+        campaignId,
+        fileSize: req.file.size,
+        maxSize
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Image size must be less than 5MB'
+      });
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const extension = req.file.originalname.split('.').pop();
+    const filename = `${campaignId}-${imageType}-${timestamp}.${extension}`;
+
+    // Save file to storage/images/campaigns directory
+    const imagesDir = path.join(process.cwd(), 'storage', 'images', 'campaigns');
+    await fs.mkdir(imagesDir, { recursive: true });
+
+    const filePath = path.join(imagesDir, filename);
+
+    // Write file to disk
+    await fs.writeFile(filePath, req.file.buffer);
+
+    // Generate URL for the uploaded image
+    const imageUrl = `/storage/images/campaigns/${filename}`;
+
+    logger.info('✅ Image uploaded successfully', {
+      campaignId,
+      imageType,
+      filename,
+      url: imageUrl
+    });
+
+    res.json({
+      success: true,
+      data: {
+        url: imageUrl,
+        filename,
+        size: req.file.size,
+        type: req.file.mimetype
+      }
+    });
+  } catch (error) {
+    logger.error('❌ Error uploading image:', {
+      campaignId: req.params?.campaignId,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to upload image'
+    });
+  }
+});
+
+// POST /api/campaigns/:campaignId/analytics - Track analytics events
+router.post('/:campaignId/analytics', async (req, res) => {
+  try {
+    const { campaignId } = req.params;
+    const eventData = req.body;
+
+    logger.info('📊 Analytics event received', {
+      campaignId,
+      event: eventData.event,
+      timestamp: eventData.timestamp
+    });
+
+    // Ensure campaign exists
+    await ensureCampaignExists(campaignId);
+
+    // Save analytics event to storage
+    const analyticsDir = path.join(process.cwd(), 'storage', 'analytics', 'events');
+    await fs.mkdir(analyticsDir, { recursive: true });
+
+    const eventId = `${campaignId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const eventFile = path.join(analyticsDir, `${eventId}.json`);
+
+    const analyticsEvent = {
+      id: eventId,
+      campaignId,
+      ...eventData,
+      receivedAt: new Date().toISOString()
+    };
+
+    await fs.writeFile(eventFile, JSON.stringify(analyticsEvent, null, 2));
+
+    logger.info('✅ Analytics event saved', {
+      campaignId,
+      eventId,
+      event: eventData.event
+    });
+
+    res.json({
+      success: true,
+      data: {
+        eventId,
+        message: 'Analytics event tracked successfully'
+      }
+    });
+  } catch (error) {
+    logger.error('❌ Error tracking analytics:', {
+      campaignId: req.params?.campaignId,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to track analytics event'
     });
   }
 });

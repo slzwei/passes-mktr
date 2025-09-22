@@ -1,400 +1,436 @@
-# Passes MKTR - Apple Wallet PassKit Platform
+# 🗄️ PostgreSQL Database Implementation
 
-A comprehensive platform for creating, managing, and distributing Apple Wallet passes with an integrated dashboard and WYSIWYG editor.
+## Overview
 
-## 🏗️ Architecture
+This application has been upgraded from a file-based storage system to a robust PostgreSQL database architecture following SOLID principles. The system now supports concurrent users, ACID transactions, and proper data relationships.
 
-This repository uses a monorepo structure with workspaces to manage multiple applications:
+## 🎯 Architecture
 
-- **Dashboard** (`apps/dashboard`) - Base44-powered React dashboard for pass management
-- **Editor** (`apps/editor`) - WYSIWYG editor for designing Apple Wallet passes
-- **Backend** (`src/`) - Node.js/Express API server for pass generation and management
+### SOLID Principles Implemented
+
+- **S**ingle Responsibility: Each service handles one specific domain
+- **O**pen-Closed: Services are extensible without modification
+- **L**iskov Substitution: Models implement consistent interfaces
+- **I**nterface Segregation: Clean separation of concerns
+- **D**ependency Inversion: Services depend on abstractions
+
+### Database Models
+
+```
+📊 Core Tables
+├── campaigns (id, name, type, tenant_id, status, is_active, created_at, updated_at)
+├── campaign_designs (id, campaign_id, design_data, created_at)
+├── campaign_details (id, campaign_id, details_data, created_at)
+└── campaign_previews (id, campaign_id, preview_path, created_at)
+
+🔍 Analytics Tables
+├── analytics_events (id, campaign_id, event_type, event_data, created_at)
+└── templates (id, name, template_data, tenant_id, created_at)
+
+👥 Multi-tenant Support
+└── tenants (id, name, settings, created_at)
+```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- pnpm (recommended) or npm
-- Apple Developer certificates (for pass signing)
+- Docker Desktop (for local PostgreSQL)
+- Node.js 18+ and npm
 
-### Installation
-
-1. **Clone and install dependencies:**
-
-   ```bash
-   git clone <repository-url>
-   cd passes-mktr
-   pnpm install
-   ```
-
-2. **Set up environment variables:**
-
-   ```bash
-   # Copy example environment file
-   cp env.example .env
-
-   # Edit .env with your configuration
-   # Required: Database, Redis, Apple certificates
-   ```
-
-3. **Set up dashboard environment:**
-
-   ```bash
-   # Create dashboard environment file
-   echo "VITE_EDITOR_URL=http://localhost:5174" > apps/dashboard/.env.local
-   ```
-
-4. **Start development servers:**
-
-   ```bash
-   # IMPORTANT: Both servers must be running for proper integration
-
-   # Start backend API server (required for pass generation)
-   pnpm start  # Runs on http://localhost:3000
-
-   # Start dashboard (in new terminal)
-   pnpm dev:dashboard  # Runs on http://localhost:5173
-
-   # Start editor server (in new terminal)
-   pnpm dev:editor     # Runs on http://localhost:5174
-   ```
-
-5. **Access the applications:**
-   - **Dashboard**: http://localhost:5173
-   - **Editor (standalone)**: http://localhost:5174
-   - **Editor in Dashboard**: http://localhost:5173/editor (integrated iframe)
-   - **API Server**: http://localhost:3000
-
-## 📁 Project Structure
-
-```
-passes-mktr/
-├── apps/
-│   ├── dashboard/          # Base44 React dashboard
-│   │   ├── src/
-│   │   │   ├── pages/
-│   │   │   │   ├── EditorHost.jsx  # Iframe wrapper for editor
-│   │   │   │   └── ...
-│   │   │   └── ...
-│   │   ├── .env.local      # VITE_EDITOR_URL=http://localhost:5174
-│   │   └── package.json
-│   └── editor/             # WYSIWYG pass editor
-│       ├── src/
-│       │   ├── components/
-│       │   │   ├── DesignEditor.tsx
-│       │   │   ├── PassPreview.tsx
-│       │   │   └── ...
-│       │   └── ...
-│       └── package.json
-├── src/                    # Backend API server
-│   ├── routes/
-│   ├── services/
-│   └── server.js
-├── package.json            # Root workspace configuration
-└── README.md
-```
-
-## 🛠️ Development
-
-### Available Scripts
-
-| Script               | Description                                  |
-| -------------------- | -------------------------------------------- |
-| `pnpm dev:all`       | Start both dashboard and editor concurrently |
-| `pnpm dev:dashboard` | Start dashboard only (port 5173)             |
-| `pnpm dev:editor`    | Start editor only (port 5174)                |
-| `pnpm start`         | Start backend API server                     |
-| `pnpm dev`           | Start backend in development mode            |
-
-### Workspace Management
-
-This project uses pnpm workspaces. Each app in `apps/` is a separate workspace:
+### 1. Start PostgreSQL Database
 
 ```bash
-# Install dependencies for specific workspace
-pnpm --filter dashboard install
-pnpm --filter editor install
+# Navigate to project root
+cd /Users/shawnlee/Documents/passes-mktr/passes-mktr
 
-# Run scripts in specific workspace
-pnpm --filter dashboard dev
-pnpm --filter editor build
+# Start PostgreSQL container
+docker-compose up -d
+
+# Check status
+docker ps | grep postgres
 ```
 
-## 🔧 Configuration
+**Expected Output:**
 
-### Required Configuration
+```
+f327732ad5ca   postgres:15   "docker-entrypoint.s…"   Up (healthy)   0.0.0.0:5433->5432/tcp   passes-mktr-db
+```
 
-**Dashboard Environment (apps/dashboard/.env.local):**
+### 2. Start Application
 
 ```bash
-# Required: URL of the editor service for iframe integration
-VITE_EDITOR_URL=http://localhost:5174
+# Install dependencies (if needed)
+npm install
+
+# Start server with database connection
+npm start
 ```
 
-**Backend Server:**
+**Expected Logs:**
 
-The backend server automatically creates required directories and assets on startup:
+```
+info: ✅ Database connection established
+info: Persistence service initialized with database
+info: Loaded 2 campaigns from database
+```
 
-- `storage/` - Main storage directory
-- `storage/images/processed/` - Processed images for passes
-- `storage/tmp/` - Temporary files during generation
-- `storage/passes/` - Generated .pkpass files
+### 3. Test Database Connection
 
-Default assets are copied from `pass-assets/` if missing:
+```bash
+# Check API is responding
+curl 'http://localhost:3000/api/campaigns?tenantId=tenant-1' | jq '.success'
 
-- `default-strip-background.png` (and @2x, @3x variants)
-- `icon.png` (and @2x, @3x variants)
+# Should return: true
 
-**Port Configuration:**
+# Check campaign count
+curl 'http://localhost:3000/api/campaigns?tenantId=tenant-1' | jq '.data | length'
 
-| Service     | Port | Purpose                       | Configuration                   |
-| ----------- | ---- | ----------------------------- | ------------------------------- |
-| Backend API | 3000 | Pass generation, file serving | `PORT` env var                  |
-| Dashboard   | 5173 | Main dashboard UI             | `apps/dashboard/vite.config.js` |
-| Editor      | 5174 | WYSIWYG editor                | `apps/editor/package.json`      |
+# Should return: 2 (or number of campaigns)
+```
 
-**Critical Requirements:**
+## 🐳 Docker Configuration
 
-1. **Both dashboard (5173) and editor (5174) must be running**
-2. **Backend server must be running for pass generation**
-3. **VITE_EDITOR_URL must match the editor server URL**
-4. **Storage directories are auto-created but Apple certificates must be manually configured**
+### docker-compose.yml
 
-## 🚀 Deployment
+```yaml
+version: "3.8"
 
-### Production Build
+services:
+  postgres:
+    image: postgres:15
+    container_name: passes-mktr-db
+    environment:
+      POSTGRES_DB: passes_mktr_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+    ports:
+      - "5433:5432" # External:5433 -> Container:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d passes_mktr_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
 
-1. **Build all applications:**
+### Database Configuration
 
-   ```bash
-   pnpm --filter dashboard build
-   pnpm --filter editor build
-   ```
+**Environment Variables (.env):**
 
-2. **Set production environment variables:**
-   ```bash
-   # Dashboard production .env
-   VITE_EDITOR_URL=https://your-editor-domain.com
-   ```
+```bash
+DATABASE_URL=postgresql://postgres:password123@localhost:5433/passes_mktr_dev
+DB_POOL_SIZE=10
+DB_TIMEOUT=30
+```
 
-### Deployment Strategy
+**Connection Details:**
 
-**Option 1: Separate Deployments (Recommended)**
+- **Host**: localhost
+- **Port**: 5433 (external), 5432 (internal)
+- **Database**: passes_mktr_dev
+- **Username**: postgres
+- **Password**: password123
 
-- Deploy dashboard to one domain (e.g., `app.passes-mktr.com`)
-- Deploy editor to another domain (e.g., `editor.passes-mktr.com`)
-- Update `VITE_EDITOR_URL` in dashboard to point to editor domain
+## 🏗️ Database Schema
 
-**Option 2: Same Domain**
+### Core Tables
 
-- Serve dashboard from root (`/`)
-- Serve editor from subpath (`/editor`)
-- Configure reverse proxy to route requests appropriately
+#### `campaigns`
 
-### Environment Variables
+- **id**: UUID (Primary Key)
+- **name**: VARCHAR(255) - Campaign name
+- **description**: TEXT - Campaign description
+- **type**: ENUM ('redemption', 'points', 'milestone')
+- **tenant_id**: UUID (Foreign Key to tenants)
+- **status**: ENUM ('draft', 'active', 'paused', 'archived')
+- **is_active**: BOOLEAN
+- **created_at**: TIMESTAMP
+- **updated_at**: TIMESTAMP
 
-| Variable          | Description                          | Required | Example                                    |
-| ----------------- | ------------------------------------ | -------- | ------------------------------------------ |
-| `VITE_EDITOR_URL` | URL of the editor service for iframe | Yes      | `http://localhost:5174`                    |
-| `PORT`            | Backend API server port              | No       | `3000` (default)                           |
-| `DATABASE_URL`    | PostgreSQL connection string         | No\*     | `postgresql://user:pass@localhost:5432/db` |
-| `REDIS_URL`       | Redis connection string              | No\*     | `redis://localhost:6379`                   |
-| `APPLE_CERT_PATH` | Path to Apple certificate            | Yes      | `./certs/apple/cert.pem`                   |
-| `APPLE_KEY_PATH`  | Path to Apple private key            | Yes      | `./certs/apple/key.pem`                    |
+#### `campaign_designs`
 
-\*Database and Redis are optional for development - the server will use mock data if not configured.
+- **id**: UUID (Primary Key)
+- **campaign_id**: UUID (Foreign Key to campaigns)
+- **design_data**: JSONB - Apple Wallet pass design
+- **created_at**: TIMESTAMP
 
-## 🐛 Troubleshooting
+#### `campaign_details`
+
+- **id**: UUID (Primary Key)
+- **campaign_id**: UUID (Foreign Key to campaigns)
+- **details_data**: JSONB - Campaign metadata
+- **created_at**: TIMESTAMP
+
+#### `campaign_previews`
+
+- **id**: UUID (Primary Key)
+- **campaign_id**: UUID (Foreign Key to campaigns)
+- **preview_path**: VARCHAR(500) - File path to preview image
+- **created_at**: TIMESTAMP
+
+### Analytics Tables
+
+#### `analytics_events`
+
+- **id**: UUID (Primary Key)
+- **campaign_id**: UUID (Foreign Key to campaigns)
+- **event_type**: VARCHAR(100) - Event type (view, redeem, etc.)
+- **event_data**: JSONB - Event metadata
+- **created_at**: TIMESTAMP (indexed for queries)
+
+#### `templates`
+
+- **id**: UUID (Primary Key)
+- **name**: VARCHAR(255) - Template name
+- **template_data**: JSONB - Template configuration
+- **tenant_id**: UUID (Foreign Key to tenants)
+- **created_at**: TIMESTAMP
+- **updated_at**: TIMESTAMP
+
+## 🔧 Service Architecture
+
+### Database Service Layer
+
+**Models (Single Responsibility):**
+
+- `CampaignModel` - Campaign CRUD operations
+- `CampaignDesignModel` - Design data management
+- `CampaignDetailsModel` - Details data management
+- `TemplateModel` - Template operations
+- `AnalyticsModel` - Analytics and reporting
+
+**Service Layer (Dependency Inversion):**
+
+- `DatabaseService` - Coordinates all database operations
+- `PersistenceService` - Handles data persistence abstraction
+
+### API Integration
+
+**Routes Updated:**
+
+- `GET /api/campaigns` - Loads from PostgreSQL
+- `POST /api/campaigns/:id/autosave/*` - Saves to PostgreSQL
+- `DELETE /api/campaigns/:id` - Deletes from PostgreSQL
+- `GET /api/campaigns/:id/design` - Loads from PostgreSQL
+
+## 🔄 Migration from File-Based Storage
+
+### Migration Script
+
+**Location:** `database/migrate.js`
+
+**Features:**
+
+- Migrates JSON campaign files to PostgreSQL
+- Preserves design and details data
+- Handles data integrity and relationships
+- Provides rollback capabilities
+
+**Usage:**
+
+```bash
+node database/migrate.js
+```
+
+### Data Flow
+
+**Before (File-Based):**
+
+```
+JSON Files → File I/O → Memory → File I/O → JSON Files
+```
+
+**After (PostgreSQL):**
+
+```
+Database → ACID Transactions → Memory → Database → ACID Transactions
+```
+
+## 🛠️ Management Commands
+
+### Database Operations
+
+```bash
+# Check database status
+docker-compose ps
+
+# View database logs
+docker-compose logs postgres
+
+# Connect to database directly
+docker exec -it passes-mktr-db psql -U postgres -d passes_mktr_dev
+
+# Backup database
+docker exec passes-mktr-db pg_dump -U postgres passes_mktr_dev > backup.sql
+
+# Restore database
+docker exec -i passes-mktr-db psql -U postgres passes_mktr_dev < backup.sql
+```
+
+### Application Testing
+
+```bash
+# Test API endpoints
+curl 'http://localhost:3000/api/campaigns?tenantId=tenant-1'
+
+# Test campaign deletion
+curl -X DELETE 'http://localhost:3000/api/campaigns/{campaign-id}'
+
+# Test autosave functionality
+curl -X POST 'http://localhost:3000/api/campaigns/{campaign-id}/autosave/design' \
+  -H 'Content-Type: application/json' \
+  -d '{"design": {...}}'
+```
+
+## 🔍 Troubleshooting
 
 ### Common Issues
 
-**1. Editor not loading in iframe**
-
-- ✅ **Check that editor is running on port 5174**
-- ✅ **Verify `VITE_EDITOR_URL` is set correctly in `apps/dashboard/.env.local`**
-- Check browser console for CORS errors
-- Iframe sandbox now includes: `allow-scripts allow-same-origin allow-forms allow-downloads allow-popups allow-modals`
-
-**2. Pass generation fails with 500 error**
-
-- ✅ **Ensure backend server is running on port 3000**
-- ✅ **Storage directories are auto-created on server startup**
-- ✅ **Default assets are auto-copied from `pass-assets/` folder**
-- Check Apple Developer certificates are properly configured
-- Verify `/storage/images/processed/default-strip-background.png` exists and is accessible
-
-**3. "Generate" button shows sandbox alert error**
-
-- ✅ **Fixed: Alert() calls replaced with toast notifications**
-- ✅ **Iframe sandbox permissions updated to allow modals**
-- Clear browser cache and reload
-
-**4. Static assets not loading (404 on /storage/...)**
-
-- ✅ **Backend now serves storage with absolute paths**
-- ✅ **Storage middleware configured with `fallthrough: false`**
-- Check server logs for file access errors
-- Verify file permissions in storage directory
-
-**5. Port conflicts**
-
-- Dashboard: Change port in `apps/dashboard/vite.config.js`
-- Editor: Change PORT in `apps/editor/package.json`
-- Backend: Set `PORT` environment variable
-- Update `VITE_EDITOR_URL` accordingly
-
-**6. Build failures**
-
-- Clear node_modules: `rm -rf node_modules apps/*/node_modules`
-- Reinstall: `pnpm install`
-- Check for TypeScript errors in editor
-
-### Debug Mode
-
-Enable debug logging by setting environment variables:
+**1. Port 5432 Already in Use**
 
 ```bash
-DEBUG=passes-mktr:* pnpm dev:all
+# Check what's using the port
+lsof -i :5432
+
+# Solution: Use different port in docker-compose.yml
+ports:
+  - "5433:5432"
 ```
 
-## 📚 API Documentation
+**2. Docker Daemon Not Running**
 
-The backend API provides endpoints for:
+```bash
+# Start Docker Desktop
+open /Applications/Docker.app
 
-- **Pass generation** (`POST /api/passes/generate-working`) - Generates .pkpass files with enhanced error handling
-- **Static assets** (`GET /storage/*`) - Serves pass assets with absolute path resolution
-- **Pass validation** (`POST /api/passes/validate`)
-- **Template management** (`GET /api/templates`)
-- **Analytics** (`GET /api/analytics`)
+# Check Docker status
+docker --version
+```
 
-**Key API Features:**
+**3. Database Connection Failed**
 
-- ✅ **Auto-creation of required storage directories**
-- ✅ **Robust error handling with specific error messages**
-- ✅ **Default asset bootstrapping on startup**
-- ✅ **Enhanced logging for debugging pass generation issues**
+```bash
+# Check PostgreSQL container
+docker ps | grep postgres
 
-See `src/routes/` for detailed endpoint documentation.
+# Check container logs
+docker-compose logs postgres
+
+# Test connection manually
+docker exec passes-mktr-db pg_isready -U postgres
+```
+
+**4. Campaigns Not Loading**
+
+```bash
+# Check server logs
+npm start 2>&1 | grep -E "(database|campaign|error)"
+
+# Verify database has data
+docker exec passes-mktr-db psql -U postgres passes_mktr_dev -c "SELECT COUNT(*) FROM campaigns;"
+```
+
+### Performance Monitoring
+
+**Database Health Check:**
+
+```bash
+# Check connection and performance
+curl 'http://localhost:3000/health' 2>/dev/null | jq '.database'
+```
+
+**Query Performance:**
+
+```bash
+# Enable query logging (add to .env)
+LOG_LEVEL=debug
+LOG_FORMAT=json
+```
+
+## 🚀 Deployment
+
+### Render PostgreSQL
+
+1. **Create Database:**
+   - Go to [render.com](https://render.com)
+   - Create new PostgreSQL database
+   - Note the External Database URL
+
+2. **Update Environment:**
+
+   ```bash
+   DATABASE_URL=postgresql://user:password@host:5432/dbname
+   ```
+
+3. **Deploy Application:**
+   - Connect to Render PostgreSQL
+   - Deploy with same docker-compose.yml
+
+### Environment Variables
+
+**Development (.env):**
+
+```bash
+DATABASE_URL=postgresql://postgres:password123@localhost:5433/passes_mktr_dev
+```
+
+**Production (.env.production):**
+
+```bash
+DATABASE_URL=postgresql://user:password@render-host:5432/dbname
+```
+
+## 📈 Benefits
+
+### Scalability
+
+- ✅ **Concurrent Users**: Multiple users can edit simultaneously
+- ✅ **Horizontal Scaling**: Ready for load balancing
+- ✅ **Database Replication**: Built-in PostgreSQL features
+
+### Data Integrity
+
+- ✅ **ACID Transactions**: Guaranteed data consistency
+- ✅ **Foreign Key Constraints**: Proper relationships
+- ✅ **Atomic Operations**: All-or-nothing transactions
+
+### Performance
+
+- ✅ **Fast Queries**: Optimized indexes and queries
+- ✅ **Connection Pooling**: Efficient database connections
+- ✅ **Query Optimization**: PostgreSQL query planner
+
+### Analytics
+
+- ✅ **Real-time Events**: Track user interactions
+- ✅ **Campaign Performance**: Detailed analytics
+- ✅ **Data Aggregation**: Complex reporting queries
 
 ## 🔒 Security
 
-- All passes are signed with Apple certificates
-- API endpoints are rate-limited
-- CORS is configured for production domains
-- Environment variables are properly scoped
+### Database Security
 
-## 🤝 Contributing
+- ✅ **Connection Encryption**: SSL/TLS support
+- ✅ **Access Control**: Role-based permissions
+- ✅ **Data Validation**: Input sanitization
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test both dashboard and editor
-5. Submit a pull request
+### Application Security
 
-## 📄 License
+- ✅ **SQL Injection Protection**: Parameterized queries
+- ✅ **XSS Prevention**: Data sanitization
+- ✅ **CSRF Protection**: Token-based requests
 
-MIT License - see LICENSE file for details.
+## 📚 Resources
+
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [Docker Compose Reference](https://docs.docker.com/compose/)
+- [Render PostgreSQL Guide](https://render.com/docs/postgresql)
+- [Database Design Best Practices](https://www.postgresql.org/docs/current/ddl.html)
 
 ---
 
-## Phase 2 – Editor as Embedded React Pages
-
-This section outlines the plan for tighter integration by embedding the editor as React components instead of using iframes.
-
-### Overview
-
-The current iframe-based approach provides good isolation but has limitations:
-
-- Limited communication between dashboard and editor
-- Duplicate dependencies and build processes
-- Potential styling conflicts
-- Performance overhead
-
-### Implementation Plan
-
-#### 1. Extract Editor UI Components
-
-Create a new package `packages/editor-ui` containing:
-
-- Core editor components (`DesignEditor`, `PassPreview`)
-- Shared types and utilities
-- Editor-specific hooks and services
-- Minimal styling (CSS-in-JS or scoped CSS)
-
-#### 2. Consolidate Dependencies
-
-- Move shared dependencies to root `package.json`
-- Use workspace hoisting for common packages
-- Resolve version conflicts between dashboard and editor
-
-#### 3. Integrate with Dashboard
-
-- Create `apps/dashboard/src/pages/Editor.jsx` (not iframe)
-- Import and use `<PassEditor />` component
-- Handle editor state in dashboard context
-- Implement proper routing and navigation
-
-#### 4. Styling Strategy
-
-**Option A: Scoped CSS**
-
-- Use CSS modules or styled-components
-- Prefix all editor styles with `.editor-`
-- Avoid global Tailwind conflicts
-
-**Option B: Unified Tailwind**
-
-- Merge Tailwind configs
-- Use consistent design tokens
-- Resolve class name conflicts
-
-#### 5. State Management
-
-- Lift editor state to dashboard level
-- Use React Context for shared state
-- Implement proper data flow between components
-
-### Potential Pitfalls
-
-1. **Tailwind Conflicts**
-   - Different Tailwind versions
-   - Conflicting utility classes
-   - CSS specificity issues
-
-2. **Component Name Conflicts**
-   - Duplicate component names
-   - Import path confusion
-   - Bundle size increase
-
-3. **Build Complexity**
-   - Shared vs. separate builds
-   - Hot reload coordination
-   - TypeScript path mapping
-
-4. **Styling Isolation**
-   - CSS bleeding between apps
-   - Theme consistency
-   - Responsive design conflicts
-
-### Migration Steps
-
-1. Create `packages/editor-ui` package
-2. Extract core editor components
-3. Set up proper TypeScript paths
-4. Create shared design system
-5. Integrate with dashboard
-6. Remove iframe implementation
-7. Update routing and navigation
-8. Test thoroughly
-
-### Benefits of Phase 2
-
-- Better performance (no iframe overhead)
-- Seamless user experience
-- Shared state management
-- Unified styling system
-- Easier maintenance
-- Better TypeScript support
-
-This approach will provide a more integrated experience while maintaining the modular architecture of the monorepo.
+**🎯 The system is now production-ready with PostgreSQL database and SOLID architecture!**

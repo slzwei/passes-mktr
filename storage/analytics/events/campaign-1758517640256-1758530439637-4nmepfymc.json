@@ -1,0 +1,10 @@
+{
+  "id": "campaign-1758517640256-1758530439637-4nmepfymc",
+  "campaignId": "campaign-1758517640256",
+  "event": "page_view",
+  "timestamp": "2025-09-22T08:40:39.627Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  "referrer": "",
+  "url": "http://localhost:3000/campaigns/campaign-1758517640256/mobile",
+  "receivedAt": "2025-09-22T08:40:39.637Z"
+}

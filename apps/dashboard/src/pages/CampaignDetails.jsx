@@ -7,12 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { 
-  ArrowLeft, 
-  Calendar, 
-  Users, 
-  Target, 
-  DollarSign,
+import autoSaveService from '@/services/autoSaveService';
+import {
+  ArrowLeft,
+  Calendar,
+  Target,
   Clock,
   MapPin,
   Mail,
@@ -30,6 +29,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import campaignService from '@/services/campaignService';
+import TinyPassPreview from '@/components/campaigns/TinyPassPreview.jsx';
 
 const CampaignDetails = () => {
   const navigate = useNavigate();
@@ -58,8 +58,6 @@ const CampaignDetails = () => {
     description: '',
     startDate: '',
     endDate: '',
-    targetAudience: '',
-    budget: '',
     goals: '',
     location: '',
     contactEmail: '',
@@ -84,6 +82,10 @@ const CampaignDetails = () => {
   const [campaign, setCampaign] = useState(null);
   const [designData, setDesignData] = useState(null);
   const [isLoadingCampaign, setIsLoadingCampaign] = useState(false);
+  const [snapshotUrl, setSnapshotUrl] = useState(null);
+
+  // Determine preview design (prefer saved campaign design)
+  const previewDesign = (campaignId && designData?.design) ? designData.design : passDesign;
 
   // Load campaign data when campaignId is present
   useEffect(() => {
@@ -104,6 +106,10 @@ const CampaignDetails = () => {
       
       setCampaign(campaignData);
       setDesignData(designData);
+      try {
+        const snap = sessionStorage.getItem(`campaign:${campaignId}:snapshot`);
+        if (snap) setSnapshotUrl(snap);
+      } catch {}
       
       console.log('Debug - Loaded campaign data:', campaignData);
       console.log('Debug - Loaded design data:', designData);
@@ -117,8 +123,6 @@ const CampaignDetails = () => {
         ...(campaignData.campaignDetails && {
           startDate: campaignData.campaignDetails.startDate || '',
           endDate: campaignData.campaignDetails.endDate || '',
-          targetAudience: campaignData.campaignDetails.targetAudience || '',
-          budget: campaignData.campaignDetails.budget || '',
           goals: campaignData.campaignDetails.goals || '',
           location: campaignData.campaignDetails.location || '',
           contactEmail: campaignData.campaignDetails.contactEmail || '',
@@ -183,59 +187,81 @@ ${formData.storeLocatorLink ? `Store Locator: ${formData.storeLocatorLink}` : ''
 By participating in this program, customers agree to these terms and conditions.
     `.trim();
     
-    setFormData(prev => ({
-      ...prev,
-      termsAndConditions: template
-    }));
+    setFormData(prev => {
+      const newFormData = {
+        ...prev,
+        termsAndConditions: template
+      };
+      
+      // Auto-save when template is loaded
+      if (campaignId) {
+        autoSaveService.autoSaveDetails(campaignId, newFormData, {
+          delay: 1000, // Shorter delay for template loading
+          onSave: (result) => {
+            console.log('Template auto-saved:', result);
+          },
+          onError: (error) => {
+            console.error('Template auto-save failed:', error);
+          }
+        });
+      }
+      
+      return newFormData;
+    });
   };
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setFormData(prev => {
+      const newFormData = {
+        ...prev,
+        [field]: value
+      };
+      
+      // Auto-save campaign details when form data changes
+      if (campaignId) {
+        autoSaveService.autoSaveDetails(campaignId, newFormData, {
+          delay: 2000, // 2 second delay
+          onSave: (result) => {
+            console.log('Campaign details auto-saved:', result);
+          },
+          onError: (error) => {
+            console.error('Campaign details auto-save failed:', error);
+            // Could show a toast notification here
+          }
+        });
+      }
+      
+      return newFormData;
+    });
   };
 
   const handleSaveDraft = async () => {
     setIsSaving(true);
     try {
       if (campaignId) {
-        // New campaign workflow - update the existing campaign
-        const response = await fetch(`http://localhost:3000/api/campaigns/${campaignId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: formData.campaignName,
-            description: formData.description,
-            campaignDetails: {
-              startDate: formData.startDate,
-              endDate: formData.endDate,
-              targetAudience: formData.targetAudience,
-              budget: formData.budget,
-              goals: formData.goals,
-              location: formData.location,
-              contactEmail: formData.contactEmail,
-              contactPhone: formData.contactPhone,
-              contactWebsite: formData.contactWebsite,
-              storeLocatorLink: formData.storeLocatorLink,
-              rewardBreakdown: formData.rewardBreakdown,
-              termsAndConditions: formData.termsAndConditions
-            }
-          })
+        // New campaign workflow - use campaignService to update campaign and clear cache
+        const updatedCampaign = await campaignService.updateCampaign(campaignId, {
+          name: formData.campaignName,
+          description: formData.description,
+          campaignDetails: {
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            goals: formData.goals,
+            location: formData.location,
+            contactEmail: formData.contactEmail,
+            contactPhone: formData.contactPhone,
+            contactWebsite: formData.contactWebsite,
+            storeLocatorLink: formData.storeLocatorLink,
+            rewardBreakdown: formData.rewardBreakdown,
+            termsAndConditions: formData.termsAndConditions
+          }
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to save campaign');
-        }
-
-        console.log('Campaign draft saved:', { campaignId, formData });
+        console.log('Campaign draft saved:', { campaignId, formData, updatedCampaign });
+        
+        // Update local campaign state to reflect saved changes
+        setCampaign(updatedCampaign);
+        
         alert('Campaign draft saved successfully!');
       } else {
         // Legacy behavior for non-campaign workflow
@@ -250,22 +276,45 @@ By participating in this program, customers agree to these terms and conditions.
     }
   };
 
-  const handlePublishCampaign = async () => {
-    setIsSaving(true);
-    try {
-      // Simulate API call to publish campaign
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // In a real app, you would publish to backend
-      console.log('Campaign published:', { passDesign, passType, formData });
-      
-      // Navigate to campaigns list
-      navigate('/Campaigns');
-    } catch (error) {
-      console.error('Failed to publish campaign:', error);
-      alert('Failed to publish campaign. Please try again.');
-    } finally {
-      setIsSaving(false);
+  const handleNextStep = async () => {
+    if (campaignId) {
+      // Save campaign details before navigating
+      setIsSaving(true);
+      try {
+        // Use campaignService to update campaign and clear cache
+        const updatedCampaign = await campaignService.updateCampaign(campaignId, {
+          name: formData.campaignName,
+          description: formData.description,
+          campaignDetails: {
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            goals: formData.goals,
+            location: formData.location,
+            contactEmail: formData.contactEmail,
+            contactPhone: formData.contactPhone,
+            contactWebsite: formData.contactWebsite,
+            storeLocatorLink: formData.storeLocatorLink,
+            rewardBreakdown: formData.rewardBreakdown,
+            termsAndConditions: formData.termsAndConditions
+          }
+        });
+
+        console.log('Campaign details saved before navigation:', { campaignId, formData, updatedCampaign });
+        
+        // Update local campaign state to reflect saved changes
+        setCampaign(updatedCampaign);
+        
+        // Navigate to landing page editor after successful save
+        navigate(`/campaigns/${campaignId}/landing`);
+      } catch (error) {
+        console.error('Failed to save campaign details:', error);
+        alert('Failed to save campaign details. Please try again.');
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      // Fallback for legacy workflow
+      navigate('/campaigndetails');
     }
   };
 
@@ -280,18 +329,77 @@ By participating in this program, customers agree to these terms and conditions.
     
     setIsGeneratingDemo(true);
     try {
-      // Call the API to generate a proper .pkpass file
-      const response = await fetch('http://localhost:3000/api/passes/generate-demo', {
+      // Build payload to match Step 1 working generator
+      const stripImage = (() => {
+        try { return sessionStorage.getItem(`campaign:${campaignId}:stripImage`) || undefined; } catch { return undefined; }
+      })();
+      const colors = finalPassDesign?.colors || {};
+      // Mirror Step 1 mapping from PassDesign
+      const mappedColors = {
+        foreground: finalPassDesign?.foregroundColor || '#FFFFFF',
+        background: finalPassDesign?.backgroundColor || '#8B4513',
+        label: finalPassDesign?.labelColor || (finalPassDesign?.foregroundColor || '#FFFFFF'),
+        stripBackground: finalPassDesign?.stripBackgroundColor
+      };
+      const ensureFieldConfig = (() => {
+        const fc = finalPassDesign?.fieldConfig;
+        if (!fc || !fc.fields) {
+          // Don't send empty fieldConfig - let server use default loyalty card config with back fields
+          return null;
+        }
+        return fc;
+      })();
+      const payload = {
+        campaignId: campaignId || '550e8400-e29b-41d4-a716-446655440001',
+        campaignName: formData.campaignName || (campaign?.name || ''),
+        tenantName: tenantData?.companyName || 'MKTR Platform',
+        customerEmail: 'demo@mktr.sg',
+        customerName: formData.contactEmail ? formData.contactEmail.split('@')[0] : 'John Doe',
+        stampsEarned: finalPassDesign?.stampsEarned || 0,
+        stampsRequired: finalPassDesign?.totalStamps || 10,
+        expirationDate: formData.endDate || undefined,
+        hasExpiryDate: Boolean(formData.endDate),
+        removePlaceholderLogo: Boolean(finalPassDesign?.removePlaceholderLogo),
+        colors: mappedColors,
+        images: {
+          ...(finalPassDesign?.logoImage ? { logo: finalPassDesign.logoImage } : {}),
+          ...(stripImage ? { stripImage } : {}),
+          ...(finalPassDesign?.stripBackgroundImage ? { stripBackground: finalPassDesign.stripBackgroundImage } : {}),
+          ...(finalPassDesign?.stripBackgroundOpacity ? { stripBackgroundOpacity: finalPassDesign.stripBackgroundOpacity } : {}),
+          ...(finalPassDesign?.stampIconUnredeemed ? { stampIconUnredeemed: finalPassDesign.stampIconUnredeemed } : {}),
+          ...(finalPassDesign?.stampIconRedeemed ? { stampIconRedeemed: finalPassDesign.stampIconRedeemed } : {}),
+          ...(typeof finalPassDesign?.useSameStampIcon === 'boolean' ? { useSameStampIcon: finalPassDesign.useSameStampIcon } : {})
+        },
+        suppressStripShine: Boolean(finalPassDesign?.suppressStripShine),
+        qrAltText: finalPassDesign?.qrAltText || '',
+        milestones: finalPassDesign?.cardType === 'milestone' ? {
+          numberOfMilestones: finalPassDesign?.numberOfMilestones || 2,
+          milestonePositions: finalPassDesign?.milestonePositions || [5, 10],
+          useMilestoneOverlay: true
+        } : undefined,
+        ...(ensureFieldConfig ? { fieldConfig: ensureFieldConfig } : {}),
+        // Add campaign details for back of pass
+        campaignDetails: {
+          campaignName: formData.campaignName || '',
+          startDate: formData.startDate || '',
+          endDate: formData.endDate || '',
+          location: formData.location || '',
+          contactEmail: formData.contactEmail || '',
+          contactPhone: formData.contactPhone || '',
+          contactWebsite: formData.contactWebsite || '',
+          storeLocatorLink: formData.storeLocatorLink || '',
+          rewardBreakdown: formData.rewardBreakdown || '',
+          termsAndConditions: formData.termsAndConditions || ''
+        }
+      };
+
+      // Call the same working generator endpoint as Step 1
+      const response = await fetch('/api/passes/generate-working', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          passDesign: finalPassDesign,
-          passType: campaignId && designData ? designData.type : passType,
-          campaignData: formData,
-          tenantData
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -318,7 +426,7 @@ By participating in this program, customers agree to these terms and conditions.
       
       // Fallback: Show a more helpful error message
       if (error.message.includes('Failed to fetch')) {
-        alert('Unable to connect to the pass generation service. Please ensure the API server is running on port 3001.');
+        alert('Unable to connect to the pass generation service. Please ensure the API server is running on port 3000.');
       } else {
         alert(`Failed to generate demo pass: ${error.message}`);
       }
@@ -327,7 +435,7 @@ By participating in this program, customers agree to these terms and conditions.
     }
   };
 
-  const isFormValid = formData.campaignName && formData.description && formData.startDate && formData.endDate;
+  const isFormValid = formData.campaignName;
   const isRewardSectionComplete = formData.rewardBreakdown && formData.termsAndConditions;
   const isContactSectionComplete = formData.contactEmail && formData.contactPhone;
 
@@ -394,21 +502,10 @@ By participating in this program, customers agree to these terms and conditions.
                       autoComplete="off"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="targetAudience">Target Audience</Label>
-                    <Input
-                      id="targetAudience"
-                      value={formData.targetAudience}
-                      onChange={(e) => handleInputChange('targetAudience', e.target.value)}
-                      placeholder="e.g., Coffee lovers, 25-45 years"
-                      data-lpignore="true"
-                      autoComplete="off"
-                    />
-                  </div>
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description *</Label>
+                  <Label htmlFor="description">Description</Label>
                   <Textarea
                     id="description"
                     value={formData.description}
@@ -440,13 +537,13 @@ By participating in this program, customers agree to these terms and conditions.
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Calendar className="h-5 w-5" />
-                  Timeline & Budget
+                  Timeline
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="startDate">Start Date *</Label>
+                    <Label htmlFor="startDate">Start Date</Label>
                     <Input
                       id="startDate"
                       type="date"
@@ -457,7 +554,7 @@ By participating in this program, customers agree to these terms and conditions.
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="endDate">End Date *</Label>
+                    <Label htmlFor="endDate">End Date</Label>
                     <Input
                       id="endDate"
                       type="date"
@@ -469,22 +566,6 @@ By participating in this program, customers agree to these terms and conditions.
                   </div>
                 </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="budget">Budget (Optional)</Label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="budget"
-                      type="number"
-                      value={formData.budget}
-                      onChange={(e) => handleInputChange('budget', e.target.value)}
-                      placeholder="0.00"
-                      className="pl-10"
-                      data-lpignore="true"
-                      autoComplete="off"
-                    />
-                  </div>
-                </div>
               </CardContent>
             </Card>
 
@@ -492,7 +573,7 @@ By participating in this program, customers agree to these terms and conditions.
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
+                  <Mail className="h-5 w-5" />
                   Contact Information
                   {isContactSectionComplete && <CheckCircle className="h-4 w-4 text-green-500" />}
                 </CardTitle>
@@ -643,19 +724,21 @@ By participating in this program, customers agree to these terms and conditions.
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Pass Design Preview */}
-            {(campaignId && designData) && (
+            {(previewDesign) && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Pass Design Preview</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-center min-h-[200px]">
-                    <div className="text-center">
-                      <div className="w-16 h-16 bg-blue-500 rounded-lg mx-auto mb-2"></div>
-                      <p className="text-sm font-medium">{campaign?.name || 'Campaign'}</p>
-                      <p className="text-xs text-gray-500">{designData?.type || 'redemption'} pass</p>
-                      <p className="text-xs text-gray-400 mt-2">Design from previous step</p>
-                    </div>
+                  <div className="bg-gray-100 rounded-lg p-4 flex flex-col items-center justify-center">
+                    {snapshotUrl ? (
+                      <img src={snapshotUrl} alt="Pass snapshot" className="rounded-xl shadow w-[180px] h-auto" />
+                    ) : (
+                      <TinyPassPreview design={previewDesign} />
+                    )}
+                    <p className="text-sm font-medium mt-3">{campaign?.name || 'Campaign'}</p>
+                    <p className="text-xs text-gray-500">{(campaignId && designData?.type) ? designData.type : (passType || 'redemption')} pass</p>
+                    <p className="text-xs text-gray-400 mt-1">Design from previous step</p>
                   </div>
                   <Button 
                     variant="outline" 
@@ -714,8 +797,17 @@ By participating in this program, customers agree to these terms and conditions.
                   onClick={handleSaveDraft}
                   disabled={isSaving}
                 >
-                  <Save className="h-4 w-4 mr-2" />
-                  {isSaving ? 'Saving...' : 'Save Draft'}
+                  {isSaving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Draft
+                    </>
+                  )}
                 </Button>
                 
                 <Button
@@ -729,17 +821,26 @@ By participating in this program, customers agree to these terms and conditions.
                 </Button>
                 {!isFormValid && (
                   <p className="text-xs text-gray-500 text-center">
-                    Fill in campaign name, description, and dates to enable
+                    Fill in campaign name to enable
                   </p>
                 )}
                 
                 <Button
                   className="w-full bg-purple-600 hover:bg-purple-700"
-                  onClick={handlePublishCampaign}
+                  onClick={handleNextStep}
                   disabled={!isFormValid || !isRewardSectionComplete || !isContactSectionComplete || isSaving}
                 >
-                  <ArrowRight className="h-4 w-4 mr-2" />
-                  {isSaving ? 'Publishing...' : 'Publish Campaign'}
+                  {isSaving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRight className="h-4 w-4 mr-2" />
+                      Next Step
+                    </>
+                  )}
                 </Button>
                 
                 <Button
@@ -760,9 +861,9 @@ By participating in this program, customers agree to these terms and conditions.
               <CardContent className="space-y-2 text-xs text-yellow-700">
                 <div>Form Valid: {isFormValid ? '✅' : '❌'}</div>
                 <div>Campaign Name: {formData.campaignName ? '✅' : '❌'}</div>
-                <div>Description: {formData.description ? '✅' : '❌'}</div>
-                <div>Start Date: {formData.startDate ? '✅' : '❌'}</div>
-                <div>End Date: {formData.endDate ? '✅' : '❌'}</div>
+                <div>Description: {formData.description ? '✅' : '⚪'} (Optional)</div>
+                <div>Start Date: {formData.startDate ? '✅' : '⚪'} (Optional)</div>
+                <div>End Date: {formData.endDate ? '✅' : '⚪'} (Optional)</div>
                 <div>Reward Section: {isRewardSectionComplete ? '✅' : '❌'}</div>
                 <div>Contact Section: {isContactSectionComplete ? '✅' : '❌'}</div>
               </CardContent>
@@ -783,7 +884,7 @@ By participating in this program, customers agree to these terms and conditions.
                   <span>Use the template generator for professional terms & conditions</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Users className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <Building className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <span>Contact info is auto-populated from your account</span>
                 </div>
                 <div className="flex items-start gap-2">

@@ -1,12 +1,10 @@
 /**
- * WebSocket Service
- * Handles real-time communication for WYSIWYG editor preview updates
+ * Enhanced WebSocket Service
+ * Handles real-time communication, campaign updates, and UX feedback
  */
 
 const { Server } = require('socket.io');
 const logger = require('../utils/logger');
-const PreviewService = require('./previewService');
-const EditorStateService = require('./editorStateService');
 
 class WebSocketService {
   constructor(server) {
@@ -15,8 +13,12 @@ class WebSocketService {
         origin: [
           'http://localhost:3000',
           'http://localhost:3001',
+          'http://localhost:5173',
+          'http://localhost:5174',
           'http://127.0.0.1:3000',
           'http://127.0.0.1:3001',
+          'http://127.0.0.1:5173',
+          'http://127.0.0.1:5174',
           process.env.CORS_ORIGIN
         ].filter(Boolean),
         methods: ['GET', 'POST'],
@@ -25,11 +27,12 @@ class WebSocketService {
       transports: ['websocket', 'polling']
     });
     
-    this.previewService = new PreviewService();
-    this.editorStates = new Map(); // Store editor states by session ID
+    this.connectedUsers = new Map(); // Store user sessions
+    this.campaignRooms = new Map(); // Track campaign collaborators
+    this.saveIndicators = new Map(); // Track save states
     
     this.setupEventHandlers();
-    logger.info('WebSocket service initialized');
+    logger.info('✅ Enhanced WebSocket service initialized');
   }
 
   /**
@@ -39,261 +42,295 @@ class WebSocketService {
     this.io.on('connection', (socket) => {
       logger.info('Client connected', { socketId: socket.id });
 
-      // Initialize editor state for this session
-      const editorState = new EditorStateService();
-      this.editorStates.set(socket.id, editorState);
+      // Store user session
+      this.connectedUsers.set(socket.id, {
+        socketId: socket.id,
+        connectedAt: new Date(),
+        currentCampaign: null,
+        userId: null
+      });
+
+      // Handle user identification
+      socket.on('identify', (data) => {
+        const user = this.connectedUsers.get(socket.id);
+        if (user) {
+          user.userId = data.userId;
+          user.userName = data.userName;
+          logger.info('User identified', { socketId: socket.id, userId: data.userId });
+        }
+      });
+
+      // Handle joining campaign room
+      socket.on('join-campaign', (data) => {
+        this.handleJoinCampaign(socket, data);
+      });
+
+      // Handle leaving campaign room
+      socket.on('leave-campaign', (data) => {
+        this.handleLeaveCampaign(socket, data);
+      });
+
+      // Handle campaign design updates
+      socket.on('campaign-design-update', (data) => {
+        this.handleCampaignDesignUpdate(socket, data);
+      });
 
       // Handle preview updates
-      socket.on('update-preview', async (data) => {
-        try {
-          await this.handlePreviewUpdate(socket, data);
-        } catch (error) {
-          logger.error('Preview update failed:', error);
-          socket.emit('preview-error', { error: error.message });
-        }
+      socket.on('preview-updated', (data) => {
+        this.handlePreviewUpdated(socket, data);
       });
 
-      // Handle template updates
-      socket.on('update-template', async (data) => {
-        try {
-          await this.handleTemplateUpdate(socket, data);
-        } catch (error) {
-          logger.error('Template update failed:', error);
-          socket.emit('template-error', { error: error.message });
-        }
+      // Handle save status updates
+      socket.on('save-status', (data) => {
+        this.handleSaveStatus(socket, data);
       });
 
-      // Handle field updates
-      socket.on('update-field', async (data) => {
-        try {
-          await this.handleFieldUpdate(socket, data);
-        } catch (error) {
-          logger.error('Field update failed:', error);
-          socket.emit('field-error', { error: error.message });
-        }
+      // Handle collaboration events
+      socket.on('cursor-position', (data) => {
+        this.handleCursorPosition(socket, data);
       });
 
-      // Handle color updates
-      socket.on('update-colors', async (data) => {
-        try {
-          await this.handleColorUpdate(socket, data);
-        } catch (error) {
-          logger.error('Color update failed:', error);
-          socket.emit('color-error', { error: error.message });
-        }
-      });
-
-      // Handle image updates
-      socket.on('update-images', async (data) => {
-        try {
-          await this.handleImageUpdate(socket, data);
-        } catch (error) {
-          logger.error('Image update failed:', error);
-          socket.emit('image-error', { error: error.message });
-        }
-      });
-
-      // Handle validation requests
-      socket.on('validate-template', async (data) => {
-        try {
-          await this.handleValidation(socket, data);
-        } catch (error) {
-          logger.error('Validation failed:', error);
-          socket.emit('validation-error', { error: error.message });
-        }
-      });
-
-      // Handle undo/redo
-      socket.on('undo', () => {
-        this.handleUndo(socket);
-      });
-
-      socket.on('redo', () => {
-        this.handleRedo(socket);
+      socket.on('selection-changed', (data) => {
+        this.handleSelectionChanged(socket, data);
       });
 
       // Handle disconnect
       socket.on('disconnect', () => {
-        logger.info('Client disconnected', { socketId: socket.id });
-        this.editorStates.delete(socket.id);
+        this.handleDisconnect(socket);
       });
     });
   }
 
   /**
-   * Handle preview update
+   * Handle joining campaign room
    */
-  async handlePreviewUpdate(socket, data) {
-    const { template, passData } = data;
-    const editorState = this.editorStates.get(socket.id);
+  handleJoinCampaign(socket, data) {
+    const { campaignId, userId } = data;
     
-    if (!editorState) {
-      throw new Error('Editor state not found');
+    // Update user session
+    const user = this.connectedUsers.get(socket.id);
+    if (user) {
+      user.currentCampaign = campaignId;
     }
 
-    // Update editor state
-    editorState.updateTemplate(template);
-    editorState.setLoading(true);
+    // Join the campaign room
+    socket.join(`campaign-${campaignId}`);
+    
+    // Track campaign collaborators
+    if (!this.campaignRooms.has(campaignId)) {
+      this.campaignRooms.set(campaignId, new Set());
+    }
+    this.campaignRooms.get(campaignId).add(socket.id);
 
-    // Emit loading state
-    socket.emit('preview-loading', { isLoading: true });
+    // Notify other users in the campaign
+    socket.to(`campaign-${campaignId}`).emit('user-joined', {
+      userId,
+      socketId: socket.id,
+      timestamp: new Date().toISOString()
+    });
 
-    try {
-      // Generate preview
-      const previewData = await this.previewService.generatePreview(template, passData);
+    logger.info('User joined campaign room', { socketId: socket.id, campaignId, userId });
+  }
+
+  /**
+   * Handle leaving campaign room
+   */
+  handleLeaveCampaign(socket, data) {
+    const { campaignId, userId } = data;
+    
+    // Update user session
+    const user = this.connectedUsers.get(socket.id);
+    if (user) {
+      user.currentCampaign = null;
+    }
+
+    // Leave the campaign room
+    socket.leave(`campaign-${campaignId}`);
+    
+    // Remove from campaign collaborators
+    if (this.campaignRooms.has(campaignId)) {
+      this.campaignRooms.get(campaignId).delete(socket.id);
       
-      // Update editor state
-      editorState.setPreviewData(previewData);
-      editorState.setValidation(previewData);
+      // Clean up empty rooms
+      if (this.campaignRooms.get(campaignId).size === 0) {
+        this.campaignRooms.delete(campaignId);
+      }
+    }
 
-      // Emit preview update
-      socket.emit('preview-updated', {
-        preview: previewData,
-        validation: previewData
+    // Notify other users in the campaign
+    socket.to(`campaign-${campaignId}`).emit('user-left', {
+      userId,
+      socketId: socket.id,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.info('User left campaign room', { socketId: socket.id, campaignId, userId });
+  }
+
+  /**
+   * Handle campaign design updates
+   */
+  handleCampaignDesignUpdate(socket, data) {
+    const { campaignId, design, userId } = data;
+    
+    // Broadcast to other users in the same campaign
+    socket.to(`campaign-${campaignId}`).emit('campaign-design-updated', {
+      campaignId,
+      design,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.debug('Campaign design update broadcasted', { campaignId, userId });
+  }
+
+  /**
+   * Handle preview updates
+   */
+  handlePreviewUpdated(socket, data) {
+    const { campaignId, previewUrl, userId } = data;
+    
+    // Broadcast to other users in the same campaign
+    socket.to(`campaign-${campaignId}`).emit('campaign-preview-updated', {
+      campaignId,
+      previewUrl,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.debug('Preview update broadcasted', { campaignId, previewUrl, userId });
+  }
+
+  /**
+   * Handle save status updates
+   */
+  handleSaveStatus(socket, data) {
+    const { campaignId, status, message, userId } = data;
+    
+    // Update save indicator state
+    this.saveIndicators.set(campaignId, {
+      status,
+      message,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Broadcast to other users in the same campaign
+    socket.to(`campaign-${campaignId}`).emit('save-status-updated', {
+      campaignId,
+      status,
+      message,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.debug('Save status update broadcasted', { campaignId, status, userId });
+  }
+
+  /**
+   * Handle cursor position updates (for collaboration)
+   */
+  handleCursorPosition(socket, data) {
+    const { campaignId, position, userId } = data;
+    
+    // Broadcast cursor position to other users
+    socket.to(`campaign-${campaignId}`).emit('cursor-moved', {
+      userId,
+      position,
+      socketId: socket.id,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Handle selection changes (for collaboration)
+   */
+  handleSelectionChanged(socket, data) {
+    const { campaignId, selection, userId } = data;
+    
+    // Broadcast selection to other users
+    socket.to(`campaign-${campaignId}`).emit('selection-updated', {
+      userId,
+      selection,
+      socketId: socket.id,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Handle user disconnect
+   */
+  handleDisconnect(socket) {
+    const user = this.connectedUsers.get(socket.id);
+    
+    if (user && user.currentCampaign) {
+      // Notify campaign room about user leaving
+      socket.to(`campaign-${user.currentCampaign}`).emit('user-disconnected', {
+        userId: user.userId,
+        socketId: socket.id,
+        timestamp: new Date().toISOString()
       });
-
-    } catch (error) {
-      editorState.setLoading(false);
-      throw error;
-    }
-  }
-
-  /**
-   * Handle template update
-   */
-  async handleTemplateUpdate(socket, data) {
-    const { template, passData } = data;
-    const editorState = this.editorStates.get(socket.id);
-    
-    if (!editorState) {
-      throw new Error('Editor state not found');
-    }
-
-    editorState.updateTemplate(template);
-    
-    // Generate preview for updated template
-    await this.handlePreviewUpdate(socket, { template, passData });
-  }
-
-  /**
-   * Handle field update
-   */
-  async handleFieldUpdate(socket, data) {
-    const { fieldType, fieldIndex, field, template, passData } = data;
-    const editorState = this.editorStates.get(socket.id);
-    
-    if (!editorState) {
-      throw new Error('Editor state not found');
-    }
-
-    editorState.updateField(fieldType, fieldIndex, field);
-    
-    // Get updated template
-    const updatedTemplate = editorState.getState().currentTemplate;
-    
-    // Generate preview for updated template
-    await this.handlePreviewUpdate(socket, { template: updatedTemplate, passData });
-  }
-
-  /**
-   * Handle color update
-   */
-  async handleColorUpdate(socket, data) {
-    const { colors, template, passData } = data;
-    const editorState = this.editorStates.get(socket.id);
-    
-    if (!editorState) {
-      throw new Error('Editor state not found');
-    }
-
-    editorState.updateColors(colors);
-    
-    // Get updated template
-    const updatedTemplate = editorState.getState().currentTemplate;
-    
-    // Generate preview for updated template
-    await this.handlePreviewUpdate(socket, { template: updatedTemplate, passData });
-  }
-
-  /**
-   * Handle image update
-   */
-  async handleImageUpdate(socket, data) {
-    const { images, template, passData } = data;
-    const editorState = this.editorStates.get(socket.id);
-    
-    if (!editorState) {
-      throw new Error('Editor state not found');
-    }
-
-    editorState.updateImages(images);
-    
-    // Get updated template
-    const updatedTemplate = editorState.getState().currentTemplate;
-    
-    // Generate preview for updated template
-    await this.handlePreviewUpdate(socket, { template: updatedTemplate, passData });
-  }
-
-  /**
-   * Handle validation
-   */
-  async handleValidation(socket, data) {
-    const { template } = data;
-    
-    try {
-      const validation = await this.previewService.validateTemplate(template);
       
-      socket.emit('validation-complete', {
-        validation
-      });
-    } catch (error) {
-      throw error;
+      // Remove from campaign room
+      if (this.campaignRooms.has(user.currentCampaign)) {
+        this.campaignRooms.get(user.currentCampaign).delete(socket.id);
+        
+        // Clean up empty rooms
+        if (this.campaignRooms.get(user.currentCampaign).size === 0) {
+          this.campaignRooms.delete(user.currentCampaign);
+        }
+      }
     }
+
+    // Remove user session
+    this.connectedUsers.delete(socket.id);
+    
+    logger.info('Client disconnected and cleaned up', { 
+      socketId: socket.id,
+      userId: user?.userId,
+      campaignId: user?.currentCampaign
+    });
   }
 
   /**
-   * Handle undo
+   * Broadcast campaign update to all users in campaign room
    */
-  handleUndo(socket) {
-    const editorState = this.editorStates.get(socket.id);
+  broadcastCampaignUpdate(campaignId, data) {
+    this.io.to(`campaign-${campaignId}`).emit('campaign-updated', {
+      campaignId,
+      ...data,
+      timestamp: new Date().toISOString()
+    });
     
-    if (!editorState) {
-      throw new Error('Editor state not found');
-    }
-
-    const success = editorState.undo();
-    
-    if (success) {
-      const state = editorState.getState();
-      socket.emit('state-updated', {
-        state,
-        canUndo: editorState.canUndo(),
-        canRedo: editorState.canRedo()
-      });
-    }
+    logger.debug('Campaign update broadcasted', { campaignId, type: data.type });
   }
 
   /**
-   * Handle redo
+   * Broadcast preview update to all users in campaign room
    */
-  handleRedo(socket) {
-    const editorState = this.editorStates.get(socket.id);
+  broadcastPreviewUpdate(campaignId, previewUrl) {
+    this.io.to(`campaign-${campaignId}`).emit('preview-updated', {
+      campaignId,
+      previewUrl,
+      timestamp: new Date().toISOString()
+    });
     
-    if (!editorState) {
-      throw new Error('Editor state not found');
-    }
+    logger.debug('Preview update broadcasted', { campaignId, previewUrl });
+  }
 
-    const success = editorState.redo();
+  /**
+   * Broadcast save indicator to all users in campaign room
+   */
+  broadcastSaveIndicator(campaignId, action, message = '', type = 'info') {
+    this.io.to(`campaign-${campaignId}`).emit('save-indicator', {
+      action, // 'show' or 'hide'
+      message,
+      type,
+      campaignId,
+      timestamp: new Date().toISOString()
+    });
     
-    if (success) {
-      const state = editorState.getState();
-      socket.emit('state-updated', {
-        state,
-        canUndo: editorState.canUndo(),
-        canRedo: editorState.canRedo()
-      });
-    }
+    logger.debug('Save indicator broadcasted', { campaignId, action, message });
   }
 
   /**
@@ -304,24 +341,83 @@ class WebSocketService {
   }
 
   /**
+   * Get campaign collaborators
+   */
+  getCampaignCollaborators(campaignId) {
+    const collaborators = this.campaignRooms.get(campaignId) || new Set();
+    return Array.from(collaborators).map(socketId => {
+      const user = this.connectedUsers.get(socketId);
+      return {
+        socketId,
+        userId: user?.userId,
+        userName: user?.userName,
+        connectedAt: user?.connectedAt
+      };
+    });
+  }
+
+  /**
+   * Get all active campaigns
+   */
+  getActiveCampaigns() {
+    return Array.from(this.campaignRooms.keys()).map(campaignId => ({
+      campaignId,
+      collaborators: this.getCampaignCollaborators(campaignId),
+      saveStatus: this.saveIndicators.get(campaignId)
+    }));
+  }
+
+  /**
    * Broadcast to all clients
    */
   broadcast(event, data) {
-    this.io.emit(event, data);
+    this.io.emit(event, {
+      ...data,
+      timestamp: new Date().toISOString()
+    });
   }
 
   /**
    * Send to specific client
    */
   sendToClient(socketId, event, data) {
-    this.io.to(socketId).emit(event, data);
+    this.io.to(socketId).emit(event, {
+      ...data,
+      timestamp: new Date().toISOString()
+    });
   }
 
   /**
-   * Get editor state for client
+   * Get service statistics
    */
-  getEditorState(socketId) {
-    return this.editorStates.get(socketId);
+  getStats() {
+    return {
+      connectedUsers: this.connectedUsers.size,
+      activeCampaigns: this.campaignRooms.size,
+      totalRoomConnections: Array.from(this.campaignRooms.values())
+        .reduce((sum, room) => sum + room.size, 0),
+      pendingSaveIndicators: this.saveIndicators.size
+    };
+  }
+
+  /**
+   * Cleanup and close service
+   */
+  async close() {
+    // Notify all users about service shutdown
+    this.broadcast('service-shutdown', {
+      message: 'Service is shutting down, please save your work'
+    });
+
+    // Close all connections
+    this.io.close();
+    
+    // Clear all data structures
+    this.connectedUsers.clear();
+    this.campaignRooms.clear();
+    this.saveIndicators.clear();
+    
+    logger.info('WebSocket service closed');
   }
 }
 

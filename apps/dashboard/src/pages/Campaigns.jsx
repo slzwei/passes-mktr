@@ -32,10 +32,6 @@ import campaignsService from "@/services/campaignsService";
 import campaignService from "@/services/campaignService";
 import campaignMetricsService from "@/services/campaignMetricsService";
 
-// Updated imports for specific pass components
-import RedemptionPass from "../components/campaigns/RedemptionPass";
-import MilestonePass from "../components/campaigns/MilestonePass";
-import PointsPass from "../components/campaigns/PointsPass";
 
 const StatsCard = ({ title, value, change, icon: Icon, color }) => (
   <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
@@ -104,7 +100,10 @@ const getPassComponent = (campaign) => {
   }
 };
 
-const CampaignCard = ({ campaign, onManage, onDelete, deletingCampaign, isSelected, onToggleSelect, showCheckbox = false }) => (
+const CampaignCard = ({ campaign, onManage, onDelete, deletingCampaign, isSelected, onToggleSelect, showCheckbox = false }) => {
+
+
+  return (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -132,14 +131,20 @@ const CampaignCard = ({ campaign, onManage, onDelete, deletingCampaign, isSelect
               </Button>
             )}
             <Badge
-              variant={campaign.status === 'active' ? 'default' : campaign.status === 'draft' ? 'secondary' : 'outline'}
+              variant={(() => {
+                const status = campaign.status || (campaign.isActive ? 'active' : 'draft');
+                return status === 'active' ? 'default' : status === 'draft' ? 'secondary' : 'outline';
+              })()}
               className={
-                campaign.status === 'active' ? 'bg-green-100 text-green-800 border-green-200' :
-                campaign.status === 'draft' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                'bg-gray-100 text-gray-800 border-gray-200'
+                (() => {
+                  const status = campaign.status || (campaign.isActive ? 'active' : 'draft');
+                  return status === 'active' ? 'bg-green-100 text-green-800 border-green-200' :
+                         status === 'draft' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                         'bg-gray-100 text-gray-800 border-gray-200';
+                })()
               }
             >
-              {campaign.status}
+              {campaign.status || (campaign.isActive ? 'active' : 'draft')}
             </Badge>
             <h3 className="font-semibold text-lg">{campaign.name}</h3>
           </div>
@@ -167,34 +172,58 @@ const CampaignCard = ({ campaign, onManage, onDelete, deletingCampaign, isSelect
       </CardHeader>
       <CardContent className="space-y-4 pt-0 flex-1 flex flex-col">
         <div className="flex justify-center items-center bg-slate-100 rounded-lg p-4 overflow-hidden h-[335px]">
-          <div className="transform scale-[0.6]">
-            {getPassComponent(campaign)}
+          {campaign.previewUrl ? (
+            <>
+              <img
+                src={`${campaign.previewUrl}?t=${campaign.lastModified || campaign.updatedAt || Date.now()}&v=${Date.now()}`}
+                onLoad={(e) => {
+                  console.log(`✅ Image loaded successfully for ${campaign.id}:`, e.currentTarget.src);
+                }}
+                alt={`Preview of ${campaign.name}`}
+                className="max-w-full max-h-full object-contain"
+                style={{
+                  transform: 'scale(0.6)',
+                  minHeight: '50px',
+                  maxHeight: '300px',
+                  width: 'auto'
+                }}
+                onLoadStart={(e) => {
+                  console.log(`🔄 Starting to load image for ${campaign.id}: ${e.currentTarget.src}`);
+                }}
+                onError={(e) => {
+                  console.warn(`❌ Failed to load preview image for ${campaign.id}:`, e.currentTarget.src);
+                  console.warn(`Campaign previewUrl: ${campaign.previewUrl}`);
+                  console.warn(`Image exists in storage:`, campaign.previewUrl ? 'Yes' : 'No');
+                  e.currentTarget.style.display = 'none';
+                  const fallback = e.currentTarget.nextElementSibling;
+                  if (fallback && fallback instanceof HTMLElement) {
+                    fallback.style.display = 'block';
+                  }
+                }}
+              />
+            </>
+          ) : null}
+          <div className="text-center" style={{ display: campaign.previewUrl ? 'none' : 'block' }}>
+            <div className="text-6xl mb-4">🎨</div>
+            <p className="text-gray-600 font-medium">{campaign.name}</p>
+            <p className="text-sm text-gray-500 mt-2">{campaign.description}</p>
           </div>
         </div>
         
-        <div className="grid grid-cols-2 gap-4 text-center pt-4">
-          {campaignMetricsService.getMetricsForCampaign(campaign).map((metric, index) => (
-            <div key={index}>
-              <p className="text-2xl font-bold text-gray-900">{metric.value}</p>
-              <p className="text-xs text-gray-500">{metric.label}</p>
-            </div>
-          ))}
-        </div>
-
         <div className="flex gap-2 pt-4 mt-auto">
-          <Button 
-            variant={campaign.status === 'draft' ? 'default' : 'outline'} 
-            size="sm" 
+          <Button
+            variant={campaign.status === 'draft' ? 'default' : 'outline'}
+            size="sm"
             className={`flex-1 ${
-              campaign.status === 'draft' 
-                ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+              campaign.status === 'draft'
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
             <Eye className="h-4 w-4 mr-2" />
             {campaign.status === 'draft' ? 'Publish' : 'View'}
           </Button>
-          <Link 
+          <Link
             to={campaign.id.startsWith('campaign-') ? `/campaigns/${campaign.id}/design` : `/editor/${campaign.passType || 'redemption'}`}
             className="flex-1"
           >
@@ -207,7 +236,8 @@ const CampaignCard = ({ campaign, onManage, onDelete, deletingCampaign, isSelect
       </CardContent>
     </Card>
   </motion.div>
-);
+  );
+};
 
 const CampaignListItem = ({ campaign, onManage, onDelete, deletingCampaign, isSelected, onToggleSelect }) => (
   <motion.div
@@ -235,14 +265,20 @@ const CampaignListItem = ({ campaign, onManage, onDelete, deletingCampaign, isSe
         
         <div className="flex items-center space-x-3">
           <Badge
-            variant={campaign.status === 'active' ? 'default' : campaign.status === 'draft' ? 'secondary' : 'outline'}
+            variant={(() => {
+              const status = campaign.status || (campaign.isActive ? 'active' : 'draft');
+              return status === 'active' ? 'default' : status === 'draft' ? 'secondary' : 'outline';
+            })()}
             className={
-              campaign.status === 'active' ? 'bg-green-100 text-green-800 border-green-200' :
-              campaign.status === 'draft' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-              'bg-gray-100 text-gray-800 border-gray-200'
+              (() => {
+                const status = campaign.status || (campaign.isActive ? 'active' : 'draft');
+                return status === 'active' ? 'bg-green-100 text-green-800 border-green-200' :
+                       status === 'draft' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                       'bg-gray-100 text-gray-800 border-gray-200';
+              })()
             }
           >
-            {campaign.status}
+            {campaign.status || (campaign.isActive ? 'active' : 'draft')}
           </Badge>
           <div>
             <h3 className="font-semibold text-base">{campaign.name}</h3>
@@ -395,36 +431,46 @@ export default function Campaigns() {
   const loadCampaigns = async () => {
     try {
       setIsLoading(true);
-      
+
+      console.log('🔄 Loading campaigns from API...');
+
       // Load campaigns from API
-      const response = await fetch('http://localhost:3000/api/campaigns?tenantId=tenant-1');
-      
+      const response = await fetch('/api/campaigns?tenantId=tenant-1');
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to load campaigns');
       }
-      
-      // Combine API campaigns with localStorage campaigns for backward compatibility
-      const apiCampaigns = result.data || [];
-      const localCampaigns = campaignsService.getAllCampaigns();
-      
-      // Merge campaigns, API campaigns take precedence
-      const allCampaigns = [...apiCampaigns, ...localCampaigns.filter(local => 
-        !apiCampaigns.find(api => api.id === local.id)
-      )];
-      
+
+      // Use only API campaigns - they have the correct previewUrl and updated data
+      const allCampaigns = result.data || [];
+
+      console.log('✅ API campaigns loaded successfully:', allCampaigns.length);
+      console.log('📊 Campaign IDs:', allCampaigns.map(c => `${c.id} (${c.previewUrl ? 'has' : 'no'} preview)`).join(', '));
+
+      // Log detailed campaign info
+      allCampaigns.forEach((campaign, index) => {
+        console.log(`Campaign ${index}: ${campaign.id}`);
+        console.log(`  - Name: ${campaign.name}`);
+        console.log(`  - Preview URL: ${campaign.previewUrl}`);
+        console.log(`  - Last Modified: ${campaign.lastModified}`);
+        console.log(`  - Generated Image URL: ${campaign.previewUrl}?t=${campaign.lastModified || Date.now()}&v=${Date.now()}`);
+      });
+
       setCampaigns(allCampaigns);
     } catch (error) {
-      console.error('Error loading campaigns:', error);
-      
+      console.error('❌ Error loading campaigns from API:', error);
+
       // Fallback to localStorage campaigns
       try {
         const localCampaigns = campaignsService.getAllCampaigns();
+        console.warn('⚠️ Using localStorage campaigns as fallback:', localCampaigns.length);
+        console.log('📊 LocalStorage campaign IDs:', localCampaigns.map(c => `${c.id} (${c.previewUrl ? 'has' : 'no'} preview)`).join(', '));
         setCampaigns(localCampaigns);
       } catch (fallbackError) {
         console.error('Error loading fallback campaigns:', fallbackError);
@@ -445,6 +491,7 @@ export default function Campaigns() {
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
+
   // Handle campaign deletion
   const handleDeleteCampaign = async (campaign) => {
     if (!window.confirm(`Are you sure you want to delete "${campaign.name}"? This action cannot be undone.`)) {
@@ -457,7 +504,7 @@ export default function Campaigns() {
       // Check if this is an API campaign (has campaignId format) or localStorage campaign
       if (campaign.id.startsWith('campaign-')) {
         // API campaign - delete via API
-        const response = await fetch(`http://localhost:3000/api/campaigns/${campaign.id}`, {
+        const response = await fetch(`/api/campaigns/${campaign.id}`, {
           method: 'DELETE'
         });
         
@@ -530,26 +577,45 @@ export default function Campaigns() {
   };
 
   const toggleSelectAll = () => {
+    console.log('🎯 Toggle select all clicked:', {
+      currentSelected: selectedCampaigns.size,
+      totalCampaigns: filteredCampaigns.length,
+      campaignIds: filteredCampaigns.map(c => c.id)
+    });
+
     if (selectedCampaigns.size === filteredCampaigns.length) {
+      console.log('📭 Deselecting all campaigns');
       setSelectedCampaigns(new Set());
     } else {
-      setSelectedCampaigns(new Set(filteredCampaigns.map(c => c.id)));
+      const allIds = new Set(filteredCampaigns.map(c => c.id));
+      console.log('✅ Selecting all campaigns:', Array.from(allIds));
+      setSelectedCampaigns(allIds);
     }
   };
 
   const handleBulkDelete = async () => {
-    if (selectedCampaigns.size === 0) return;
-    
-    const selectedCount = selectedCampaigns.size;
+    // Get current selected campaigns to avoid closure issues
+    const currentSelected = selectedCampaigns;
+
+    console.log('🚀 Starting bulk delete:', {
+      selectedCount: currentSelected.size,
+      selectedCampaigns: Array.from(currentSelected)
+    });
+
+    if (currentSelected.size === 0) return;
+
+    const selectedCount = currentSelected.size;
     if (!window.confirm(`Are you sure you want to delete ${selectedCount} campaign${selectedCount > 1 ? 's' : ''}? This action cannot be undone.`)) {
       return;
     }
 
     try {
       setIsDeletingSelected(true);
-      
+
       // Delete all selected campaigns
-      const deletePromises = Array.from(selectedCampaigns).map(async (campaignId) => {
+      const deletePromises = Array.from(currentSelected).map(async (campaignId) => {
+        console.log('🗑️ Deleting campaign:', campaignId);
+
         if (campaignId.startsWith('campaign-')) {
           // API campaign
           const response = await fetch(`http://localhost:3000/api/campaigns/${campaignId}`, {
@@ -570,13 +636,15 @@ export default function Campaigns() {
       });
 
       await Promise.all(deletePromises);
-      
+      console.log('✅ All delete promises completed');
+
       // Clear selection and refresh
       setSelectedCampaigns(new Set());
       await loadCampaigns();
-      
+      console.log('✅ Campaign list refreshed');
+
     } catch (error) {
-      console.error('Error deleting campaigns:', error);
+      console.error('❌ Error deleting campaigns:', error);
       alert('Failed to delete some campaigns. Please try again.');
     } finally {
       setIsDeletingSelected(false);
@@ -585,7 +653,14 @@ export default function Campaigns() {
 
   const filteredCampaigns = campaigns.filter(campaign => {
     const matchesSearch = campaign.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesTab = activeTab === "all" || campaign.status === activeTab;
+
+    // Handle both old status field and new isActive field
+    let campaignStatus = campaign.status;
+    if (campaignStatus === undefined || campaignStatus === null) {
+      campaignStatus = campaign.isActive ? 'active' : 'draft';
+    }
+
+    const matchesTab = activeTab === "all" || campaignStatus === activeTab;
     return matchesSearch && matchesTab;
   });
 

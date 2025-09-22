@@ -1,11 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import PassPreview from './components/PassPreview';
 import DesignEditor from './components/DesignEditor';
 import ToastContainer, { ToastData } from './components/ui/ToastContainer';
 import { PassDesign, CardType } from './types';
 import './App.css';
 import { CanvasPreviewCapture } from './services/previewCapture';
-import { RotateCcw, Undo2, Redo2, CreditCard, Star, Target } from 'lucide-react';
+import { enhancedAutoSaveService } from './services/enhancedAutoSave';
+import { RotateCcw, Undo2, Redo2, CreditCard, Star, Target, Wifi, WifiOff, Save, Check } from 'lucide-react';
 
 function App() {
   // Get pass type and campaign ID from URL parameters
@@ -157,13 +158,156 @@ function App() {
   const [showEditor, setShowEditor] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [toasts, setToasts] = useState<ToastData[]>([]);
+  const [saveStatus, setSaveStatus] = useState<{
+    saving: boolean;
+    saved: boolean;
+    error: boolean;
+    message: string;
+  }>({ saving: false, saved: false, error: false, message: '' });
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [autoSaveStats, setAutoSaveStats] = useState(enhancedAutoSaveService.getStats());
+  const previewContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Setup enhanced auto-save event listeners
+  React.useEffect(() => {
+    const handleShowSaveIndicator = (event: CustomEvent) => {
+      const { campaignId, message, type } = event.detail;
+      if (campaignId === campaignId) {
+        setSaveStatus({
+          saving: type === 'info',
+          saved: type === 'success',
+          error: type === 'error',
+          message: message || ''
+        });
+      }
+    };
+
+    const handleHideSaveIndicator = (event: CustomEvent) => {
+      const { campaignId: eventCampaignId } = event.detail;
+      if (eventCampaignId === campaignId) {
+        setSaveStatus(prev => ({
+          ...prev,
+          saving: false,
+          saved: true,
+          message: 'Changes saved'
+        }));
+
+        // Hide "saved" indicator after 2 seconds
+        setTimeout(() => {
+          setSaveStatus(prev => ({ ...prev, saved: false, message: '' }));
+        }, 2000);
+      }
+    };
+
+    const handleOnlineStatus = () => setIsOnline(true);
+    const handleOfflineStatus = () => setIsOnline(false);
+
+    // Update auto-save stats periodically
+    const statsInterval = setInterval(() => {
+      setAutoSaveStats(enhancedAutoSaveService.getStats());
+    }, 5000);
+
+    window.addEventListener('show-save-indicator', handleShowSaveIndicator as EventListener);
+    window.addEventListener('hide-save-indicator', handleHideSaveIndicator as EventListener);
+    window.addEventListener('online', handleOnlineStatus);
+    window.addEventListener('offline', handleOfflineStatus);
+
+    return () => {
+      window.removeEventListener('show-save-indicator', handleShowSaveIndicator as EventListener);
+      window.removeEventListener('hide-save-indicator', handleHideSaveIndicator as EventListener);
+      window.removeEventListener('online', handleOnlineStatus);
+      window.removeEventListener('offline', handleOfflineStatus);
+      clearInterval(statsInterval);
+    };
+  }, [campaignId]);
+
+  // Listen for snapshot requests from parent (dashboard)
+  React.useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      try {
+        if (!event.data || typeof event.data !== 'object') return;
+
+        if (event.data.type === 'TRIGGER_PREVIEW_CAPTURE') {
+          console.log('🖼️ Received trigger preview capture message');
+          if (!campaignId) {
+            console.error('❌ No campaign ID available for preview capture');
+            return;
+          }
+
+          // Find the pass preview element and capture it
+          let target = (previewContainerRef.current?.querySelector('.relative.rounded-2xl.shadow-2xl.overflow-hidden.flex.flex-col') as HTMLElement | null);
+
+          // Fallback selectors if the first one doesn't work
+          if (!target) {
+            target = previewContainerRef.current?.querySelector('[style*="width"][style*="height"]') as HTMLElement | null;
+          }
+          if (!target) {
+            target = previewContainerRef.current?.querySelector('.flex.flex-col') as HTMLElement | null;
+          }
+
+          if (!target) {
+            console.error('❌ Target element not found for preview capture');
+            return;
+          }
+
+          console.log('🎯 Found target element for capture');
+
+          // Small delay to ensure DOM is fully rendered
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          const capturer = new CanvasPreviewCapture();
+          const dataUrl = await capturer.captureElement(target);
+          console.log('📸 Preview captured, data URL length:', dataUrl.length);
+
+          // Upload to backend
+          const response = await fetch(`/api/campaigns/${campaignId}/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ previewData: dataUrl })
+          });
+
+          if (response.ok) {
+            console.log('✅ Preview capture and upload successful');
+            // Notify parent window that preview has been updated
+            window.parent?.postMessage({
+              type: 'CAMPAIGN_PREVIEW_UPDATED',
+              campaignId: campaignId
+            }, '*');
+          } else {
+            console.error('❌ Failed to upload preview:', response.status, await response.text());
+          }
+          return;
+        }
+
+        const capturer = new CanvasPreviewCapture();
+        if (event.data.type === 'REQUEST_SNAPSHOT') {
+          const target = (previewContainerRef.current?.querySelector('.relative.rounded-2xl.shadow-2xl.overflow-hidden.flex.flex-col') as HTMLElement | null) || undefined;
+          const dataUrl = await capturer.captureElement(target || document.body);
+          window.parent?.postMessage({ type: 'SNAPSHOT_READY', image: dataUrl }, '*');
+          return;
+        }
+        if (event.data.type === 'REQUEST_STRIP') {
+          const stripEl = document.querySelector('.stamp-strip-container') as HTMLElement | null;
+          if (!stripEl) throw new Error('Strip element not found');
+          const stripUrl = await capturer.captureStripElement(stripEl);
+          window.parent?.postMessage({ type: 'STRIP_READY', image: stripUrl }, '*');
+          return;
+        }
+      } catch (err: any) {
+        const messageType = (event.data && event.data.type) || 'UNKNOWN_REQUEST';
+        window.parent?.postMessage({ type: `${messageType}_ERROR`, error: err?.message || 'Capture failed' }, '*');
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [campaignId]);
 
   // Load saved design data when campaignId is provided
   React.useEffect(() => {
     if (campaignId) {
       const loadSavedDesign = async () => {
         try {
-          const response = await fetch(`http://localhost:3000/api/campaigns/${campaignId}/design`);
+          const response = await fetch(`/api/campaigns/${campaignId}/design`);
           if (response.ok) {
             const data = await response.json();
             if (data.success && data.data.design) {
@@ -178,6 +322,7 @@ function App() {
               setPassDesign(mergedDesign);
               setDesignHistory([mergedDesign]);
               setHistoryIndex(0);
+
             }
           }
         } catch (error) {
@@ -248,7 +393,62 @@ function App() {
   const handleDesignChange = (newDesign: PassDesign) => {
     addToHistory(newDesign);
     
-    // Notify parent window (dashboard) of design changes
+    // Enhanced auto-save with immediate UX feedback
+    if (campaignId) {
+      enhancedAutoSaveService.autoSaveDesign(campaignId, newDesign, {
+        delay: 2000,
+        showIndicator: true,
+        onSave: async (result) => {
+          console.log('✅ Design auto-saved:', result);
+          
+          // Capture and upload preview in background
+          try {
+            let target = (previewContainerRef.current?.querySelector('.relative.rounded-2xl.shadow-2xl.overflow-hidden.flex.flex-col') as HTMLElement | null);
+            if (!target) {
+              target = previewContainerRef.current?.querySelector('[style*="width"][style*="height"]') as HTMLElement | null;
+            }
+            if (!target) {
+              target = previewContainerRef.current?.querySelector('.flex.flex-col') as HTMLElement | null;
+            }
+
+            if (!target) {
+              console.warn('⚠️ Preview capture skipped: target element not found');
+              return;
+            }
+
+            // Small delay for DOM updates
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            const capturer = new CanvasPreviewCapture();
+            const dataUrl = await capturer.captureElement(target);
+
+            // Upload optimized preview
+            const response = await fetch(`/api/campaigns/${campaignId}/preview`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ previewData: dataUrl })
+            });
+
+            if (response.ok) {
+              console.log('📸 Preview updated successfully');
+            }
+          } catch (err) {
+            console.error('❌ Preview capture failed:', err);
+          }
+        },
+        onError: (error) => {
+          console.error('❌ Auto-save failed:', error);
+          addToast({
+            type: 'error',
+            title: 'Save Failed',
+            message: 'Your changes are cached locally and will sync when connection is restored.',
+            duration: 5000
+          });
+        }
+      });
+    }
+    
+    // Notify parent window of changes
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({
         type: 'DESIGN_CHANGED',
@@ -457,8 +657,7 @@ function App() {
       };
 
       // 3) Request backend to generate working pass and return .pkpass
-      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
-      const res = await fetch(`${apiBaseUrl}/api/passes/generate-working`, {
+      const res = await fetch(`/api/passes/generate-working`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -532,20 +731,53 @@ function App() {
         <div className="flex-1 flex flex-col bg-gray-50 min-h-0">
           {/* Mobile: Show/Hide Editor Toggle */}
           <div className="lg:hidden p-3 border-b border-gray-200 bg-white">
-            <button
-              onClick={() => setShowEditor(!showEditor)}
-              className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                showEditor 
-                  ? 'bg-gray-100 text-gray-700' 
-                  : 'bg-blue-600 text-white'
-              }`}
-            >
-              {showEditor ? 'Hide Controls' : 'Show Controls'}
-            </button>
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setShowEditor(!showEditor)}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  showEditor 
+                    ? 'bg-gray-100 text-gray-700' 
+                    : 'bg-blue-600 text-white'
+                }`}
+              >
+                {showEditor ? 'Hide Controls' : 'Show Controls'}
+              </button>
+              
+              {/* Save Status Indicator */}
+              <div className="ml-3 flex items-center space-x-2">
+                {!isOnline && (
+                  <div className="flex items-center space-x-1 text-amber-600">
+                    <WifiOff className="w-4 h-4" />
+                    <span className="text-xs">Offline</span>
+                  </div>
+                )}
+                
+                {saveStatus.saving && (
+                  <div className="flex items-center space-x-1 text-blue-600">
+                    <Save className="w-4 h-4 animate-pulse" />
+                    <span className="text-xs">Saving...</span>
+                  </div>
+                )}
+                
+                {saveStatus.saved && (
+                  <div className="flex items-center space-x-1 text-green-600">
+                    <Check className="w-4 h-4" />
+                    <span className="text-xs">Saved</span>
+                  </div>
+                )}
+                
+                {saveStatus.error && (
+                  <div className="flex items-center space-x-1 text-red-600">
+                    <WifiOff className="w-4 h-4" />
+                    <span className="text-xs">Failed</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Preview Area */}
-          <div className="flex-1 flex flex-col items-center justify-center p-3 lg:p-6 overflow-auto">
+          <div className="flex-1 flex flex-col items-center justify-center p-3 lg:p-6 overflow-auto" ref={previewContainerRef}>
             <div className="w-full max-w-sm lg:max-w-none lg:w-auto">
               <PassPreview design={passDesign} onDesignChange={(updates) => {
                 const newDesign = { ...passDesign, ...updates };
@@ -585,6 +817,127 @@ function App() {
                   </button>
                 </div>
 
+                {/* Manual Preview Capture Button */}
+                <button
+                  onClick={async () => {
+                    if (!campaignId) {
+                      console.error('❌ No campaign ID available for preview capture');
+                      return;
+                    }
+
+                    console.log('🖼️ Manual preview capture for campaign:', campaignId);
+                    try {
+                      // Find the pass preview element
+                      let target = (previewContainerRef.current?.querySelector('.relative.rounded-2xl.shadow-2xl.overflow-hidden.flex.flex-col') as HTMLElement | null);
+
+                      // Fallback selectors if the first one doesn't work
+                      if (!target) {
+                        target = previewContainerRef.current?.querySelector('[style*="width"][style*="height"]') as HTMLElement | null;
+                      }
+                      if (!target) {
+                        target = previewContainerRef.current?.querySelector('.flex.flex-col') as HTMLElement | null;
+                      }
+
+                      if (!target) {
+                        console.error('❌ Target element not found for preview capture');
+                        console.log('Available elements:', previewContainerRef.current?.querySelectorAll('*').length);
+                        return;
+                      }
+
+                      console.log('🎯 Found target element:', target.className);
+
+                      // Small delay to ensure DOM is fully rendered
+                      await new Promise(resolve => setTimeout(resolve, 100));
+
+                      const capturer = new CanvasPreviewCapture();
+                      const dataUrl = await capturer.captureElement(target);
+                      console.log('📸 Preview captured, data URL length:', dataUrl.length);
+
+                      // Upload to backend
+                      const response = await fetch(`/api/campaigns/${campaignId}/preview`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ previewData: dataUrl })
+                      });
+
+                      if (response.ok) {
+                        const result = await response.json();
+                        console.log('✅ Manual preview capture and upload successful:', result);
+
+                        // Show success message
+                        addToast({
+                          type: 'success',
+                          title: 'Preview Updated',
+                          message: 'Campaign preview has been updated successfully!'
+                        });
+
+                        // Refresh the campaign list in parent window
+                        if (window.parent && window.parent !== window) {
+                          window.parent.postMessage({
+                            type: 'CAMPAIGN_PREVIEW_UPDATED',
+                            campaignId: campaignId
+                          }, '*');
+                        }
+                      } else {
+                        const error = await response.json();
+                        console.error('❌ Failed to upload preview:', response.status, error);
+                        addToast({
+                          type: 'error',
+                          title: 'Preview Update Failed',
+                          message: 'Failed to update campaign preview. Please try again.'
+                        });
+                      }
+                    } catch (error) {
+                      console.error('❌ Manual preview capture failed:', error);
+                      addToast({
+                        type: 'error',
+                        title: 'Preview Capture Failed',
+                        message: 'Failed to capture campaign preview. Please try again.'
+                      });
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-all duration-200 shadow-sm"
+                  title="Manually capture and update the campaign preview image"
+                >
+                  📸 Capture Preview
+                </button>
+
+                {/* Check Preview Status Button */}
+                <button
+                  onClick={async () => {
+                    console.log('🔍 Checking preview status...');
+                    try {
+                      const response = await fetch(`/api/campaigns/${campaignId}/preview-status`);
+                      const result = await response.json();
+                      console.log('📊 Preview status:', result);
+
+                      if (result.exists) {
+                        addToast({
+                          type: 'info',
+                          title: 'Preview Status',
+                          message: `Preview exists (${result.fileSize} bytes, last modified: ${new Date(result.lastModified).toLocaleTimeString()})`
+                        });
+                      } else {
+                        addToast({
+                          type: 'warning',
+                          title: 'Preview Status',
+                          message: 'No preview found for this campaign'
+                        });
+                      }
+                    } catch (error) {
+                      console.error('❌ Failed to check preview status:', error);
+                      addToast({
+                        type: 'error',
+                        title: 'Status Check Failed',
+                        message: 'Could not check preview status'
+                      });
+                    }
+                  }}
+                  className="px-3 py-1 rounded text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200"
+                >
+                  Check Status
+                </button>
+
                 {/* Generate Demo Button */}
                 <button
                   onClick={handleGeneratePass}
@@ -603,6 +956,70 @@ function App() {
               <p className="text-xs text-gray-500 text-center max-w-md">
                 Use the demo generator to test your pass design. Save and continue options are available in the header.
               </p>
+            </div>
+
+            {/* Desktop Save Status Indicator */}
+            <div className="hidden lg:block fixed bottom-4 right-4 z-50">
+              <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-3 min-w-[200px]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">Auto-save Status</span>
+                  <div className="flex items-center space-x-1">
+                    {isOnline ? (
+                      <Wifi className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <WifiOff className="w-4 h-4 text-amber-500" />
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-1">
+                  {saveStatus.saving && (
+                    <div className="flex items-center space-x-2 text-blue-600">
+                      <Save className="w-4 h-4 animate-pulse" />
+                      <span className="text-sm">Saving changes...</span>
+                    </div>
+                  )}
+                  
+                  {saveStatus.saved && !saveStatus.saving && (
+                    <div className="flex items-center space-x-2 text-green-600">
+                      <Check className="w-4 h-4" />
+                      <span className="text-sm">All changes saved</span>
+                    </div>
+                  )}
+                  
+                  {saveStatus.error && (
+                    <div className="flex items-center space-x-2 text-red-600">
+                      <WifiOff className="w-4 h-4" />
+                      <span className="text-sm">Save failed - cached locally</span>
+                    </div>
+                  )}
+                  
+                  {!saveStatus.saving && !saveStatus.saved && !saveStatus.error && (
+                    <div className="flex items-center space-x-2 text-gray-500">
+                      <div className="w-4 h-4 rounded-full bg-gray-300"></div>
+                      <span className="text-sm">Ready</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Auto-save Stats */}
+                <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                  <div className="flex justify-between">
+                    <span>Pending:</span>
+                    <span>{autoSaveStats.pendingSaves}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Cached:</span>
+                    <span>{autoSaveStats.cachedItems}</span>
+                  </div>
+                  {autoSaveStats.pendingSync > 0 && (
+                    <div className="flex justify-between text-amber-600">
+                      <span>Sync pending:</span>
+                      <span>{autoSaveStats.pendingSync}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
